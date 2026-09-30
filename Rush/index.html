@@ -1,0 +1,2430 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Rush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,800&family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Permanent+Marker&display=swap">
+<style>
+  /* Layout : une table de montage. À gauche l'écran de contrôle (aperçu, transport, timeline),
+     à droite le panneau d'outils en onglets. Une seule ambiance sombre, comme une régie : choix assumé. */
+  :root {
+    color-scheme: dark;
+    --bg: #0d1015;
+    --surface: #151a22;
+    --surface-2: #1c232d;
+    --line: #29313d;
+    --fg: #e8ecf2;
+    --muted: #8a94a6;
+    --accent: #f4b63c;      /* lampe tally */
+    --accent-ink: #1b1305;
+    --cue: #5cc6ff;         /* sélection, repères de sous-titres */
+    --warn: #ff7a5c;
+    --ok: #62d39a;
+    --font-ui: "Familjen Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --r: 10px;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.45;
+    padding-inline: 16px;
+    padding-block: 0 24px;
+    box-sizing: border-box;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--cue); outline-offset: 2px; }
+
+  /* ---------- barre du haut ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding-block: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; }
+  .tally { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); flex: none; }
+  .tally.rec { background: var(--warn); box-shadow: 0 0 14px var(--warn); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .brand h1, .brand h2 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .brand .src { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid var(--line); background: var(--surface-2);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600;
+    transition: background .15s, border-color .15s;
+  }
+  .btn:hover { border-color: #3a4556; background: #232b37; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.primary:hover { background: #ffc653; }
+  .btn.ghost { background: transparent; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  a.btn { text-decoration: none; color: var(--fg); }
+  a.btn.primary { color: var(--accent-ink); }
+
+  /* ---------- structure ---------- */
+  .layout {
+    display: grid; gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    align-items: start;
+  }
+  @media (max-width: 1080px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  .monitor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .stage {
+    position: relative;
+    height: min(64vh, 760px); min-height: 320px;
+    background:
+      repeating-conic-gradient(#141920 0 25%, #11151b 0 50%) 0 0 / 22px 22px;
+    border: 1px solid var(--line); border-radius: var(--r);
+    display: grid; place-items: center; overflow: hidden;
+  }
+  @media (max-width: 960px) { .stage { height: 58vh; } }
+  #view {
+    display: block; border-radius: 4px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.55);
+    cursor: grab; touch-action: none;
+  }
+  #view.dragging { cursor: grabbing; }
+  .stage-tag {
+    position: absolute; left: 12px; top: 12px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em;
+    background: rgba(13,16,21,.8); border: 1px solid var(--line);
+    padding: 4px 8px; border-radius: 6px; color: var(--muted);
+    pointer-events: none;
+  }
+  .stage-tag b { color: var(--fg); font-weight: 600; }
+
+  /* transport */
+  .transport { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .play {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--fg); color: var(--bg); border: 0; cursor: pointer;
+    display: grid; place-items: center; flex: none;
+  }
+  .play svg { width: 18px; height: 18px; }
+  .tc { font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .tc span { color: var(--muted); }
+  .transport .spacer { flex: 1; }
+  .keys { color: var(--muted); font-size: 12px; }
+  @media (hover: none), (max-width: 600px) { .keys { display: none; } }
+  kbd {
+    font-family: var(--font-mono); font-size: 11px;
+    border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 5px; background: var(--surface);
+  }
+  .toggle-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 11px; font-size: 12px; cursor: pointer; background: transparent;
+  }
+  .toggle-chip[aria-pressed="true"] { border-color: var(--cue); color: var(--cue); }
+
+  /* timeline */
+  .timeline {
+    position: relative; height: 64px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--line);
+    overflow: hidden; touch-action: none; cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+  }
+  .strip { position: absolute; inset: 0; display: flex; opacity: .55; }
+  .strip canvas { height: 100%; flex: 1 1 0; min-width: 0; object-fit: cover; display: block; }
+  .shade { position: absolute; top: 0; bottom: 0; background: rgba(8,10,14,.72); pointer-events: none; }
+  .sel {
+    position: absolute; top: 0; bottom: 0;
+    border-top: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+    pointer-events: none;
+  }
+  .handle {
+    position: absolute; top: 0; bottom: 0; width: 14px;
+    background: var(--accent); cursor: ew-resize;
+    display: grid; place-items: center;
+  }
+  .handle::after { content: ""; width: 2px; height: 22px; border-radius: 2px; background: var(--accent-ink); opacity: .6; }
+  .handle.start { border-radius: 6px 0 0 6px; transform: translateX(-100%); }
+  .handle.end { border-radius: 0 6px 6px 0; }
+  .playhead { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; pointer-events: none; box-shadow: 0 0 6px rgba(0,0,0,.8); }
+  .cue-mark { position: absolute; bottom: 5px; height: 4px; border-radius: 2px; background: var(--cue); pointer-events: none; opacity: .9; }
+
+  .trim { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+  .trim .stat { display: flex; flex-direction: column; }
+  .trim .stat small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .trim .stat b { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .status {
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid currentColor;
+  }
+  .status.ok { color: var(--ok); }
+  .status.warn { color: var(--warn); }
+  .status.info { color: var(--muted); }
+  .trim .push { margin-left: auto; display: flex; gap: 8px; }
+
+  /* ---------- panneau ---------- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    min-width: 0;
+    position: sticky; top: calc(env(safe-area-inset-top, 0px) + 76px);
+  }
+  @media (max-width: 1080px) { .panel { position: static; } }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tabs button {
+    flex: 1 0 auto; background: none; border: 0; cursor: pointer;
+    padding: 12px 8px; font-weight: 600; font-size: 13px; color: var(--muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+  .pane { padding: 16px; display: flex; flex-direction: column; gap: 18px; max-height: calc(100vh - 160px); overflow-y: auto; }
+  @media (max-width: 1080px) { .pane { max-height: none; } }
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field > label, .field > .lbl {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .field > label output, .field > .lbl output { font-family: var(--font-mono); color: var(--fg); letter-spacing: 0; text-transform: none; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0; }
+
+  .seg { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 3px; }
+  .seg button {
+    flex: 1; border: 0; background: none; cursor: pointer; border-radius: 6px;
+    padding: 7px 8px; font-weight: 600; font-size: 13px; color: var(--muted); white-space: nowrap;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); box-shadow: inset 0 0 0 1px #3a4556; }
+
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="text"], input[type="number"], textarea, select {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; width: 100%;
+  }
+  textarea { resize: vertical; min-height: 64px; }
+  input[type="color"] { width: 42px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 3px; cursor: pointer; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { min-width: 0; }
+  .check { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+  /* cartes de format */
+  .presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .preset {
+    display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center;
+    text-align: left; padding: 10px; border-radius: 8px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--line);
+  }
+  .preset[aria-pressed="true"] { border-color: var(--accent); background: #1d1a12; }
+  .preset .shape { justify-self: center; border: 2px solid var(--muted); border-radius: 3px; }
+  .preset[aria-pressed="true"] .shape { border-color: var(--accent); }
+  .preset b { display: block; font-size: 13.5px; }
+  .preset small { display: block; color: var(--muted); font-size: 11.5px; font-family: var(--font-mono); }
+  .spec {
+    display: grid; grid-template-columns: auto 1fr; gap: 4px 14px;
+    font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  }
+  .spec dt { color: var(--muted); }
+  .spec dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  /* sous-titres */
+  .cues { display: flex; flex-direction: column; gap: 8px; }
+  .cue {
+    display: grid; grid-template-columns: 64px 64px 1fr 30px; gap: 6px; align-items: center;
+  }
+  .cue input[type="number"] { padding: 6px; font-family: var(--font-mono); font-size: 12px; }
+  .cue input[type="text"] { padding: 6px 8px; }
+  .cue.active input[type="text"] { border-color: var(--cue); }
+  .icon-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line); background: none; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+  .icon-btn:hover { color: var(--warn); border-color: var(--warn); }
+  .cue-head { display: grid; grid-template-columns: 64px 64px 1fr 30px; gap: 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* export */
+  .meter { height: 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--warn); transition: width .2s linear; }
+  .result video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; display: block; }
+  .result { display: flex; flex-direction: column; gap: 10px; }
+  .note { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; margin: 0; }
+
+  /* dépôt de fichier */
+  .drop {
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(13,16,21,.88);
+    display: grid; place-items: center;
+    border: 3px dashed var(--accent);
+    font-size: 22px; font-weight: 700;
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+    transform: translateX(-50%); z-index: 30;
+    background: var(--fg); color: var(--bg); font-weight: 600;
+    padding: 10px 16px; border-radius: 8px; max-width: calc(100% - 32px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tally.rec { animation: none; }
+    .meter i { transition: none; }
+  }
+
+  /* ================= Rush : coque du site ================= */
+  /* Layout : un fond noir traversé par une houle de points (canvas fixe), une barre de navigation
+     collante, puis une vue par pilier : Analyse → Création → Promotion. */
+  :root {
+    --bg: #050608;
+    --font-display: "Archivo", "Familjen Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --glass: rgba(18, 22, 29, .78);
+  }
+  html { overflow-x: clip; }
+  #waves { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; }
+  .site-top, main.site, .site-foot { position: relative; z-index: 1; }
+
+  .site-top {
+    position: sticky; top: 0; z-index: 10;
+    margin-inline: -16px; padding-inline: 16px;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: rgba(5, 6, 8, .74);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .site-head {
+    max-width: 1400px; margin-inline: auto;
+    display: flex; align-items: center; gap: 10px 28px; flex-wrap: wrap;
+    padding-block: 12px;
+  }
+  .logo {
+    font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
+    font-size: 24px; letter-spacing: -.02em; color: var(--fg); text-decoration: none;
+    display: inline-flex; align-items: baseline;
+  }
+  .logo i { font-style: normal; color: var(--accent); }
+  .site-nav { display: flex; gap: 4px; }
+  .site-nav a {
+    color: var(--muted); text-decoration: none; font-weight: 600;
+    padding: 8px 14px; border-radius: 999px; transition: color .15s, background .15s;
+  }
+  .site-nav a:hover { color: var(--fg); }
+  .site-nav a[aria-current="page"] { color: var(--fg); background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--accent); }
+  .account { margin-left: auto; display: flex; gap: 8px; align-items: center; position: relative; }
+  .me {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 12px 4px 4px; font-weight: 600;
+  }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 13px;
+  }
+  .me small { color: var(--muted); font-weight: 500; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 8px); min-width: 220px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.5); display: flex; flex-direction: column;
+  }
+  .menu button { background: none; border: 0; text-align: left; padding: 9px 10px; border-radius: 6px; cursor: pointer; }
+  .menu button:hover { background: var(--surface-2); }
+  .menu .who { padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+  .menu .who b { display: block; }
+  .menu .who span { color: var(--muted); font-size: 12.5px; word-break: break-all; }
+  @media (max-width: 720px) {
+    .site-nav { order: 3; width: 100%; justify-content: space-between; }
+    .site-nav a { padding: 7px 10px; }
+    .account .btn { padding: 7px 10px; font-size: 13px; }
+    .me small { display: none; }
+  }
+
+  .view { max-width: 1400px; margin-inline: auto; padding-block: 28px 56px; display: flex; flex-direction: column; gap: 20px; }
+  .vhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+  .vhead h2 {
+    font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
+    font-size: clamp(28px, 4vw, 44px); letter-spacing: -.025em; line-height: 1.05; margin: 0;
+  }
+  .vhead p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; font-size: 15px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  .card { background: var(--glass); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; min-width: 0; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; }
+  .card > .hint:first-of-type { margin-bottom: 12px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--line); background: transparent; border-radius: 999px;
+    padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted);
+  }
+  .chip[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+  .tag { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.sample { color: var(--cue); border-color: rgba(92,198,255,.4); }
+
+  /* ---------- accueil ---------- */
+  .hero { padding-block: clamp(36px, 9vh, 110px) 12px; max-width: 980px; display: flex; flex-direction: column; gap: 20px; }
+  .hero h1 {
+    font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
+    font-size: clamp(38px, 6.4vw, 84px); line-height: .98; letter-spacing: -.035em; margin: 0;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { font-size: clamp(16px, 1.6vw, 19px); color: #c3cad6; max-width: 60ch; margin: 0; }
+  .hero .btn-row .btn { padding: 12px 18px; font-size: 15px; }
+  .pillars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 900px) { .pillars { grid-template-columns: minmax(0, 1fr); } }
+  .pillar { display: flex; flex-direction: column; gap: 12px; text-decoration: none; color: inherit; transition: border-color .2s, transform .2s; }
+  .pillar:hover { border-color: #4a5568; transform: translateY(-2px); }
+  .pillar .step { font-family: var(--font-mono); color: var(--accent); font-size: 13px; }
+  .pillar h3 { font-family: var(--font-display); font-stretch: 125%; font-size: 26px; letter-spacing: -.02em; margin: 0; }
+  .pillar p { margin: 0; color: var(--muted); }
+  .pillar ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .pillar .go { margin-top: auto; font-weight: 700; color: var(--fg); }
+  .pillar .go::after { content: " →"; color: var(--accent); }
+
+  /* ---------- analyse ---------- */
+  .an-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 1000px) { .an-grid { grid-template-columns: minmax(0, 1fr); } }
+  .an-head .btn-row { align-items: center; }
+  .an-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  #energy { width: 100%; height: 150px; display: block; }
+  .moments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+  @media (max-width: 700px) { .moments { grid-template-columns: minmax(0, 1fr); } }
+  .moment { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .moment .rank { font-family: var(--font-mono); font-size: 11px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+  .moment b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .score { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+  .score i { display: block; height: 100%; background: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 800px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpi { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .kpi small { color: var(--muted); font-size: 12px; }
+  .kpi b { display: block; font-family: var(--font-display); font-stretch: 125%; font-size: 26px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .delta { font-size: 12px; font-weight: 600; }
+  .delta.up { color: var(--ok); }
+  .delta.down { color: var(--warn); }
+  .chart-wrap { position: relative; }
+  #lineChart { width: 100%; height: 220px; display: block; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--fg); color: var(--bg);
+    font-size: 12px; font-weight: 600; padding: 6px 9px; border-radius: 6px; white-space: nowrap;
+    transform: translate(-50%, -110%);
+  }
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .barrow { display: grid; grid-template-columns: 84px 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+  .barrow .track { height: 12px; border-radius: 0 4px 4px 0; background: var(--surface-2); overflow: hidden; }
+  .barrow .fill { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+  .barrow.dim .fill { opacity: .3; }
+  .barrow span:last-child { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .tbl-wrap { overflow-x: auto; }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 9px 10px; border-bottom: 1px solid rgba(41,49,61,.6); }
+  .tbl td.num, .tbl th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .heat { display: grid; grid-template-columns: 70px repeat(7, minmax(0, 1fr)); gap: 3px; font-size: 11px; }
+  .heat .h { color: var(--muted); text-align: center; padding-bottom: 2px; }
+  .heat .r { color: var(--muted); display: flex; align-items: center; font-family: var(--font-mono); }
+  .heat .c { height: 26px; border-radius: 4px; }
+  .heat .c.best { outline: 2px solid var(--fg); outline-offset: -2px; }
+  .legend-seq { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .legend-seq i { width: 90px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 8%, var(--surface-2)), var(--accent)); }
+
+  /* ---------- création ---------- */
+  .templates { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .templates .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-right: 4px; }
+  .studio-shell { border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 10, 13, .92); padding-inline: 16px; padding-block: 0 16px; }
+  .studio-bar .brand h2 { font-family: var(--font-display); font-stretch: 125%; font-size: 20px; letter-spacing: -.02em; margin: 0; }
+  .studio-bar .brand h2 i { font-style: normal; color: var(--accent); }
+
+  /* ---------- promotion ---------- */
+  .promo-top { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  @media (max-width: 1000px) { .promo-top { grid-template-columns: minmax(0, 1fr); } }
+  .filters { display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .filters select { width: auto; }
+  .camps { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .camp { display: flex; flex-direction: column; gap: 12px; }
+  .camp-head { display: flex; gap: 12px; align-items: center; }
+  .mono { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-family: var(--font-display); font-stretch: 125%; color: #0b0d10; flex: none; }
+  .camp-head b { display: block; }
+  .camp-head small { color: var(--muted); }
+  .camp h3 { font-size: 15px; line-height: 1.35; margin: 0; }
+  .cpm { display: flex; align-items: baseline; gap: 8px; }
+  .cpm b { font-family: var(--font-display); font-stretch: 125%; font-size: 28px; letter-spacing: -.02em; }
+  .cpm span { color: var(--muted); font-size: 12.5px; }
+  .budget small { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 5px; font-variant-numeric: tabular-nums; }
+  .budget .meter i { background: var(--accent); transition: none; }
+  .camp .meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .camp .meta .when { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .camp details { font-size: 13px; color: #c3cad6; }
+  .camp summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  .camp .actions { display: flex; gap: 8px; margin-top: auto; }
+  .camp .actions .btn { flex: 1; }
+  .btn.joined { background: transparent; color: var(--ok); border-color: var(--ok); }
+  .sim-out { font-family: var(--font-display); font-stretch: 125%; font-size: 34px; letter-spacing: -.02em; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: minmax(0, 1fr); } }
+  .estimate { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 600px) { .estimate { grid-template-columns: minmax(0, 1fr); } }
+  .checks { display: flex; gap: 14px; flex-wrap: wrap; }
+  .err { color: var(--warn); font-size: 13px; margin: 0; }
+
+  /* ---------- compte ---------- */
+  dialog.auth {
+    background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 14px;
+    width: min(440px, calc(100% - 32px)); padding: 0; box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  dialog.auth::backdrop { background: rgba(0,0,0,.6); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  .auth-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .auth-top { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 0; }
+  .auth-top h2 { font-family: var(--font-display); font-stretch: 125%; font-size: 22px; margin: 0; letter-spacing: -.02em; }
+  .auth form { display: flex; flex-direction: column; gap: 14px; }
+  .roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .roles label { border: 1px solid var(--line); border-radius: 8px; padding: 10px 8px; text-align: center; cursor: pointer; font-weight: 600; font-size: 13px; }
+  .roles label small { display: block; color: var(--muted); font-weight: 500; font-size: 11px; }
+  .roles input { position: absolute; opacity: 0; pointer-events: none; }
+  .roles label:has(input:checked) { border-color: var(--accent); background: #1d1a12; }
+  .roles label:has(input:focus-visible) { outline: 2px solid var(--cue); }
+
+  .site-foot { max-width: 1400px; margin-inline: auto; padding-block: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  @media (prefers-reduced-motion: reduce) { .pillar { transition: none; } .pillar:hover { transform: none; } }
+</style>
+
+<canvas id="waves" aria-hidden="true"></canvas>
+
+<div class="site-top">
+  <header class="site-head">
+    <a class="logo" href="#accueil" aria-label="Rush, accueil">Rush<i>.</i></a>
+    <nav class="site-nav" aria-label="Sections">
+      <a href="#analyse" data-view="analyse">Analyse</a>
+      <a href="#creation" data-view="creation">Création</a>
+      <a href="#promotion" data-view="promotion">Promotion</a>
+    </nav>
+    <div class="account" id="account"></div>
+  </header>
+</div>
+
+<main class="site">
+  <!-- ================= ACCUEIL ================= -->
+  <section class="view" id="view-accueil" data-view="accueil">
+    <div class="hero">
+      <span class="eyebrow">Analyse · Création · Promotion</span>
+      <h1>Vos vidéos longues deviennent des <em>clips</em> qui tournent.</h1>
+      <p>Rush repère les meilleurs moments de vos vidéos, vous les montez dans Rush.Studio au format TikTok, Reels ou Shorts, puis des clippeurs les diffusent pour les marques qui paient à la vue.</p>
+      <div class="btn-row">
+        <a class="btn primary" href="#creation">Ouvrir Rush.Studio</a>
+        <a class="btn" href="#promotion">Voir les campagnes</a>
+      </div>
+    </div>
+    <div class="pillars">
+      <a class="card pillar" href="#analyse">
+        <span class="step">01 · Analyse</span>
+        <h3>Trouver ce qui accroche</h3>
+        <p>Importez une vidéo : Rush écoute le son et propose les passages les plus intenses à découper.</p>
+        <ul>
+          <li>Moments forts de 15, 30 ou 60 s</li>
+          <li>Vues, rétention et engagement par plateforme</li>
+          <li>Meilleurs créneaux de publication</li>
+        </ul>
+        <span class="go">Analyser une vidéo</span>
+      </a>
+      <a class="card pillar" href="#creation">
+        <span class="step">02 · Création</span>
+        <h3>Monter dans Rush.Studio</h3>
+        <p>Découpez, recadrez en 9:16, ajoutez un titre et des sous-titres karaoké, puis exportez en MP4.</p>
+        <ul>
+          <li>Formats TikTok, Reels, Shorts, 4:5, 1:1, 16:9</li>
+          <li>Zones d'interface de chaque appli</li>
+          <li>Import de sous-titres SRT</li>
+        </ul>
+        <span class="go">Ouvrir le studio</span>
+      </a>
+      <a class="card pillar" href="#promotion">
+        <span class="step">03 · Promotion</span>
+        <h3>Lancer une campagne de clipping</h3>
+        <p>Les marques fixent un budget et une rémunération au millier de vues. Les clippeurs publient et sont payés à la performance.</p>
+        <ul>
+          <li>Campagnes filtrables par plateforme</li>
+          <li>Simulateur de gains</li>
+          <li>Création de campagne pour les marques</li>
+        </ul>
+        <span class="go">Découvrir les campagnes</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ================= ANALYSE ================= -->
+  <section class="view" id="view-analyse" data-view="analyse" hidden>
+    <div class="vhead">
+      <div>
+        <span class="eyebrow">01 · Analyse</span>
+        <h2>Analyse</h2>
+        <p>Repérez les passages à transformer en clips, puis suivez ce que donnent vos publications.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="an-head">
+        <div>
+          <h3>Moments forts d'une vidéo <span class="tag sample" id="anTag">Exemple</span></h3>
+          <p class="hint" id="anInfo">Podcast d'exemple de 12 minutes. Importez votre vidéo pour analyser la vôtre : tout se passe dans votre navigateur.</p>
+        </div>
+        <div class="btn-row">
+          <div class="seg" id="anLen" aria-label="Durée des clips">
+            <button type="button" data-v="15">15 s</button>
+            <button type="button" data-v="30" aria-pressed="true">30 s</button>
+            <button type="button" data-v="60">60 s</button>
+          </div>
+          <label class="btn primary" for="anFile">Importer une vidéo</label>
+          <input type="file" id="anFile" accept="video/*,audio/*" hidden>
+        </div>
+      </div>
+      <canvas id="energy" aria-label="Intensité sonore au fil de la vidéo, moments forts surlignés"></canvas>
+      <div class="moments" id="moments"></div>
+      <p class="hint" style="margin-top:10px">Le score se base sur l'intensité du son et ses pics (voix qui monte, rires, réactions). C'est une estimation : écoutez chaque passage avant de le publier.</p>
+    </div>
+
+    <div class="card">
+      <div class="an-head">
+        <div>
+          <h3>Performances de vos clips <span class="tag sample">Données d'exemple</span></h3>
+          <p class="hint">Connectez vos comptes pour remplacer ces chiffres par les vôtres.</p>
+        </div>
+        <div class="btn-row">
+          <div class="chips" id="platF">
+            <button class="chip" type="button" data-v="all" aria-pressed="true">Toutes</button>
+            <button class="chip" type="button" data-v="tiktok" aria-pressed="false">TikTok</button>
+            <button class="chip" type="button" data-v="instagram" aria-pressed="false">Instagram</button>
+            <button class="chip" type="button" data-v="youtube" aria-pressed="false">YouTube</button>
+          </div>
+          <div class="seg" id="periodF" aria-label="Période">
+            <button type="button" data-v="7">7 j</button>
+            <button type="button" data-v="30" aria-pressed="true">30 j</button>
+          </div>
+          <button class="btn" type="button" id="connectBtn">Connecter mes comptes</button>
+        </div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </div>
+
+    <div class="an-grid">
+      <div class="card">
+        <h3>Vues par jour</h3>
+        <p class="hint" id="lineSub">Toutes plateformes</p>
+        <div class="chart-wrap"><svg id="lineChart" role="img" aria-label="Vues par jour"></svg><div class="tip" id="lineTip" hidden></div></div>
+      </div>
+      <div class="card">
+        <h3>Vues par plateforme</h3>
+        <p class="hint">Sur la période choisie</p>
+        <div class="bars" id="bars"></div>
+        <h3 style="margin-top:22px">Meilleurs créneaux</h3>
+        <p class="hint" id="bestSlot"></p>
+        <div class="heat" id="heat"></div>
+        <div class="legend-seq">moins d'engagement <i></i> plus</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Clips les plus vus</h3>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Clip</th><th>Plateforme</th><th class="num">Vues</th><th class="num">Rétention</th><th class="num">Engagement</th></tr></thead>
+          <tbody id="topClips"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CRÉATION ================= -->
+  <section class="view" id="view-creation" data-view="creation" hidden>
+    <div class="vhead">
+      <div>
+        <span class="eyebrow">02 · Création</span>
+        <h2>Création</h2>
+        <p>Montez vos clips directement sur le site avec Rush.Studio. Partez d'un modèle ou réglez tout vous-même.</p>
+      </div>
+      <div class="templates" id="templates">
+        <span class="lbl">Modèles</span>
+        <button class="chip" type="button" data-t="podcast" aria-pressed="false">Podcast</button>
+        <button class="chip" type="button" data-t="gaming" aria-pressed="false">Gaming</button>
+        <button class="chip" type="button" data-t="tuto" aria-pressed="false">Tutoriel</button>
+        <button class="chip" type="button" data-t="citation" aria-pressed="false">Citation</button>
+      </div>
+    </div>
+    <div class="studio-shell" id="studio">
+<div class="bar studio-bar">
+  <div class="brand">
+    <span class="tally" id="tally" aria-hidden="true"></span>
+    <h2>Rush<i>.</i>Studio</h2>
+    <span class="src" id="srcName">Vidéo de démonstration</span>
+  </div>
+  <label class="btn" for="fileIn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+    Importer une vidéo
+  </label>
+  <input type="file" id="fileIn" accept="video/*" hidden>
+  <button class="btn primary" id="goExport" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>
+    Exporter
+  </button>
+</div>
+
+<div class="layout">
+  <section class="monitor" aria-label="Aperçu et montage">
+    <div class="stage" id="stage">
+      <canvas id="view" aria-label="Aperçu du clip"></canvas>
+      <div class="stage-tag" id="stageTag"></div>
+    </div>
+
+    <div class="transport">
+      <button class="play" id="playBtn" type="button" aria-label="Lecture">
+        <svg id="icoPlay" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
+        <svg id="icoPause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      </button>
+      <div class="tc"><b id="tcNow">00:00.0</b> <span>/ <span id="tcDur">00:20.0</span></span></div>
+      <div class="spacer"></div>
+      <button class="toggle-chip" id="safeBtn" type="button" aria-pressed="true">Zones d'interface</button>
+      <span class="keys"><kbd>Espace</kbd> lecture · <kbd>I</kbd> début · <kbd>O</kbd> fin</span>
+    </div>
+
+    <div class="timeline" id="timeline" aria-label="Timeline : cliquez pour vous déplacer, tirez les poignées pour couper">
+      <div class="strip" id="strip"></div>
+      <div class="shade" id="shadeL"></div>
+      <div class="shade" id="shadeR"></div>
+      <div class="sel" id="sel"></div>
+      <div id="cueMarks"></div>
+      <div class="handle start" id="hStart" role="slider" aria-label="Début du clip" tabindex="0"></div>
+      <div class="handle end" id="hEnd" role="slider" aria-label="Fin du clip" tabindex="0"></div>
+      <div class="playhead" id="playhead"></div>
+    </div>
+
+    <div class="trim">
+      <div class="stat"><small>Début</small><b id="tStart">00:00.0</b></div>
+      <div class="stat"><small>Fin</small><b id="tEnd">00:15.0</b></div>
+      <div class="stat"><small>Durée du clip</small><b id="tLen">15,0 s</b></div>
+      <span class="status ok" id="status">Bon format</span>
+      <div class="push">
+        <button class="btn ghost" type="button" id="setIn">Début ici</button>
+        <button class="btn ghost" type="button" id="setOut">Fin ici</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel" aria-label="Réglages">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="format" type="button">Format</button>
+      <button role="tab" aria-selected="false" data-tab="cadrage" type="button">Cadrage</button>
+      <button role="tab" aria-selected="false" data-tab="texte" type="button">Texte</button>
+      <button role="tab" aria-selected="false" data-tab="subs" type="button">Sous-titres</button>
+      <button role="tab" aria-selected="false" data-tab="export" type="button">Export</button>
+    </nav>
+
+    <!-- FORMAT -->
+    <div class="pane" data-pane="format">
+      <div class="field">
+        <span class="lbl">Plateforme</span>
+        <div class="presets" id="presets"></div>
+      </div>
+      <dl class="spec" id="spec"></dl>
+      <p class="hint" id="presetTip"></p>
+    </div>
+
+    <!-- CADRAGE -->
+    <div class="pane" data-pane="cadrage" hidden>
+      <div class="field">
+        <span class="lbl">Remplissage</span>
+        <div class="seg" data-key="fit">
+          <button type="button" data-v="cover">Remplir l'écran</button>
+          <button type="button" data-v="contain">Vidéo entière</button>
+        </div>
+        <p class="hint">« Remplir » recadre la vidéo. « Vidéo entière » garde tout le plan et comble les bords.</p>
+      </div>
+      <div class="field" id="bgField">
+        <span class="lbl">Fond des bords</span>
+        <div class="row">
+          <div class="seg" data-key="bg" style="flex:1">
+            <button type="button" data-v="blur">Flou</button>
+            <button type="button" data-v="color">Couleur</button>
+          </div>
+          <input type="color" id="bgColor" value="#101318" aria-label="Couleur de fond">
+        </div>
+      </div>
+      <div class="field">
+        <label for="zoom">Zoom <output id="zoomOut">100 %</output></label>
+        <input type="range" id="zoom" min="0.5" max="3" step="0.01" value="1">
+      </div>
+      <div class="field">
+        <label for="panX">Position horizontale <output id="panXOut">0</output></label>
+        <input type="range" id="panX" min="-1" max="1" step="0.01" value="0">
+      </div>
+      <div class="field">
+        <label for="panY">Position verticale <output id="panYOut">0</output></label>
+        <input type="range" id="panY" min="-1" max="1" step="0.01" value="0">
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="button" id="recenter">Recentrer</button>
+      </div>
+      <p class="hint">Astuce : glissez directement sur l'aperçu pour déplacer le cadre.</p>
+      <div class="field">
+        <span class="lbl">Vitesse</span>
+        <div class="seg" data-key="speed">
+          <button type="button" data-v="0.5">0,5×</button>
+          <button type="button" data-v="1">1×</button>
+          <button type="button" data-v="1.5">1,5×</button>
+          <button type="button" data-v="2">2×</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEXTE -->
+    <div class="pane" data-pane="texte" hidden>
+      <div class="field">
+        <label for="title">Titre accroche</label>
+        <textarea id="title" rows="2" placeholder="Ex. : 3 erreurs à éviter au montage"></textarea>
+      </div>
+      <div class="field">
+        <span class="lbl">Style du titre</span>
+        <div class="seg" data-key="titleStyle">
+          <button type="button" data-v="band">Bandeau</button>
+          <button type="button" data-v="outline">Contour</button>
+          <button type="button" data-v="plain">Ombre</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Position du titre</span>
+        <div class="seg" data-key="titlePos">
+          <button type="button" data-v="top">En haut</button>
+          <button type="button" data-v="center">Au centre</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="titleSize">Taille du titre <output id="titleSizeOut">100 %</output></label>
+        <input type="range" id="titleSize" min="0.6" max="1.6" step="0.05" value="1">
+      </div>
+      <div class="field">
+        <label for="font">Police</label>
+        <select id="font">
+          <option value="anton">Anton (condensée, style TikTok)</option>
+          <option value="bricolage">Bricolage (grasse, moderne)</option>
+          <option value="marker">Marqueur (manuscrite)</option>
+        </select>
+      </div>
+      <div class="field">
+        <span class="lbl">Couleur d'accent</span>
+        <div class="row">
+          <input type="color" id="accent" value="#ffd23f" aria-label="Couleur d'accent">
+          <p class="hint">Bandeau du titre, mot en cours du karaoké, barre de progression.</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="handle">Pseudo affiché</label>
+        <div class="row">
+          <input type="text" id="handle" placeholder="@votrecompte">
+          <label class="check" style="flex:none"><input type="checkbox" id="showHandle"> Afficher</label>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="progress"> Barre de progression en bas</label>
+    </div>
+
+    <!-- SOUS-TITRES -->
+    <div class="pane" data-pane="subs" hidden>
+      <div class="field">
+        <span class="lbl">Style</span>
+        <div class="seg" data-key="capStyle">
+          <button type="button" data-v="karaoke">Karaoké</button>
+          <button type="button" data-v="box">Encadré</button>
+          <button type="button" data-v="clean">Sobre</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="capY">Hauteur à l'écran <output id="capYOut">70 %</output></label>
+        <input type="range" id="capY" min="0.15" max="0.9" step="0.01" value="0.7">
+      </div>
+      <div class="field">
+        <label for="capSize">Taille <output id="capSizeOut">100 %</output></label>
+        <input type="range" id="capSize" min="0.6" max="1.8" step="0.05" value="1">
+      </div>
+      <div class="field">
+        <span class="lbl">Répliques <output id="cueCount">0</output></span>
+        <div class="cue-head"><span>Début</span><span>Fin</span><span>Texte</span><span></span></div>
+        <div class="cues" id="cues"></div>
+        <div class="btn-row">
+          <button class="btn" type="button" id="addCue">+ Ajouter au curseur</button>
+          <label class="btn ghost" for="srtIn">Importer .srt / .vtt</label>
+          <input type="file" id="srtIn" accept=".srt,.vtt,text/plain,text/vtt" hidden>
+          <button class="btn ghost" type="button" id="clearCues">Tout effacer</button>
+        </div>
+        <p class="hint">Les temps sont ceux de la vidéo source, en secondes. Une réplique ajoutée démarre à la position de la tête de lecture et dure 2,5 s.</p>
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div class="pane" data-pane="export" hidden>
+      <div class="field">
+        <span class="lbl">Qualité</span>
+        <div class="seg" data-key="quality">
+          <button type="button" data-v="720">720p</button>
+          <button type="button" data-v="1080">1080p</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Images par seconde</span>
+        <div class="seg" data-key="fps">
+          <button type="button" data-v="30">30 i/s</button>
+          <button type="button" data-v="60">60 i/s</button>
+        </div>
+      </div>
+      <dl class="spec" id="exportSpec"></dl>
+      <div class="btn-row">
+        <button class="btn primary" type="button" id="exportBtn">Exporter le clip</button>
+        <button class="btn" type="button" id="thumbBtn">Miniature PNG</button>
+      </div>
+      <div class="field" id="progressBox" hidden>
+        <span class="lbl">Enregistrement <output id="expPct">0 %</output></span>
+        <div class="meter"><i id="expBar"></i></div>
+        <div class="btn-row"><button class="btn" type="button" id="cancelExport">Annuler</button></div>
+        <p class="hint">Le clip est enregistré en temps réel : gardez cet onglet visible jusqu'à la fin.</p>
+      </div>
+      <div class="result" id="result" hidden>
+        <video id="resultVid" controls playsinline></video>
+        <p class="hint" id="resultInfo"></p>
+        <div class="btn-row"><button class="btn primary" type="button" id="saveBtn">Télécharger</button></div>
+      </div>
+      <p class="note" id="formatNote"></p>
+    </div>
+  </aside>
+</div>
+    </div>
+  </section>
+
+  <!-- ================= PROMOTION ================= -->
+  <section class="view" id="view-promotion" data-view="promotion" hidden>
+    <div class="vhead">
+      <div>
+        <span class="eyebrow">03 · Promotion</span>
+        <h2>Promotion</h2>
+        <p>Campagnes de clipping : une marque fixe un budget et une rémunération pour 1 000 vues, les clippeurs découpent ses contenus et publient sur leurs comptes.</p>
+      </div>
+      <div class="seg" id="side" aria-label="Votre profil">
+        <button type="button" data-v="clipper" aria-pressed="true">Je suis clippeur</button>
+        <button type="button" data-v="brand" aria-pressed="false">Je suis une marque</button>
+      </div>
+    </div>
+
+    <div id="clipperPane" class="promo-top">
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div class="filters">
+          <div class="chips" id="campF">
+            <button class="chip" type="button" data-v="all" aria-pressed="true">Toutes</button>
+            <button class="chip" type="button" data-v="tiktok" aria-pressed="false">TikTok</button>
+            <button class="chip" type="button" data-v="reels" aria-pressed="false">Reels</button>
+            <button class="chip" type="button" data-v="shorts" aria-pressed="false">Shorts</button>
+          </div>
+          <div class="row" style="flex:none">
+            <label for="campSort" class="hint" style="white-space:nowrap">Trier par</label>
+            <select id="campSort">
+              <option value="cpm">Meilleure rémunération</option>
+              <option value="left">Budget restant</option>
+              <option value="end">Se termine bientôt</option>
+            </select>
+          </div>
+        </div>
+        <p class="hint"><span class="tag sample">Exemples</span> Les marques ci-dessous sont fictives et servent à montrer le fonctionnement.</p>
+        <div class="camps" id="camps"></div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:14px">
+        <h3>Simulateur de gains</h3>
+        <div class="field">
+          <label for="simViews">Vues de votre clip <output id="simViewsOut">100 000</output></label>
+          <input type="range" id="simViews" min="4" max="6.5" step="0.01" value="5">
+        </div>
+        <div class="field">
+          <label for="simCpm">Rémunération pour 1 000 vues (€)</label>
+          <input type="number" id="simCpm" min="0.1" step="0.1" value="2">
+        </div>
+        <div>
+          <span class="hint">Vous gagnez environ</span>
+          <div class="sim-out" id="simOut">200 €</div>
+        </div>
+        <p class="note">Les vues comptent tant que le budget de la campagne n'est pas épuisé. Un clip de 1 million de vues sur une campagne à 2 € rapporte 2 000 €.</p>
+      </div>
+    </div>
+
+    <div id="brandPane" class="promo-top" hidden>
+      <form class="card" id="campForm" novalidate style="display:flex;flex-direction:column;gap:16px">
+        <h3>Lancer une campagne</h3>
+        <div class="form-grid">
+          <div class="field"><label for="cfBrand">Marque</label><input type="text" id="cfBrand" required placeholder="Nom de votre marque"></div>
+          <div class="field"><label for="cfTitle">Titre de la campagne</label><input type="text" id="cfTitle" required placeholder="Ex. : Lancement de notre nouvelle gamme"></div>
+          <div class="field full"><label for="cfBrief">Brief pour les clippeurs</label><textarea id="cfBrief" rows="3" placeholder="Ton, messages clés, mentions obligatoires, ce qu'il ne faut pas montrer…"></textarea></div>
+          <div class="field"><label for="cfBudget">Budget total (€)</label><input type="number" id="cfBudget" min="100" step="100" value="5000"></div>
+          <div class="field"><label for="cfCpm">Rémunération pour 1 000 vues (€)</label><input type="number" id="cfCpm" min="0.1" step="0.1" value="1.5"></div>
+          <div class="field"><label for="cfDays">Durée (jours)</label><input type="number" id="cfDays" min="3" max="90" value="21"></div>
+          <div class="field"><span class="lbl">Plateformes</span>
+            <div class="checks">
+              <label class="check"><input type="checkbox" name="cfPlat" value="tiktok" checked> TikTok</label>
+              <label class="check"><input type="checkbox" name="cfPlat" value="reels" checked> Reels</label>
+              <label class="check"><input type="checkbox" name="cfPlat" value="shorts"> Shorts</label>
+            </div>
+          </div>
+        </div>
+        <p class="err" id="cfErr" hidden></p>
+        <div class="btn-row"><button class="btn primary" type="submit">Publier la campagne</button></div>
+      </form>
+      <div class="card" style="display:flex;flex-direction:column;gap:14px">
+        <h3>Estimation</h3>
+        <div class="estimate" style="grid-template-columns:minmax(0,1fr)">
+          <div class="kpi"><small>Vues achetées au maximum</small><b id="esViews">3,3 M</b></div>
+          <div class="kpi"><small>Soit environ</small><b id="esClips">167 clips</b><small>à 20 000 vues chacun</small></div>
+          <div class="kpi"><small>Budget par jour</small><b id="esDay">238 €</b></div>
+        </div>
+        <p class="note">Vous ne payez que les vues réellement obtenues, dans la limite du budget. Version de démonstration : la campagne est enregistrée dans ce navigateur et aucun paiement n'est demandé.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <span>Rush<span style="color:var(--accent)">.</span> Analyse · Création · Promotion</span>
+  <span>Version de démonstration : les comptes et campagnes restent dans ce navigateur.</span>
+</footer>
+
+<dialog class="auth" id="authDlg" aria-labelledby="authTitle">
+  <div class="auth-top">
+    <h2 id="authTitle">Créer un compte</h2>
+    <button class="icon-btn" type="button" id="authClose" aria-label="Fermer">✕</button>
+  </div>
+  <div class="auth-body">
+    <div class="seg" id="authTabs">
+      <button type="button" data-v="signup" aria-pressed="true">Créer un compte</button>
+      <button type="button" data-v="login" aria-pressed="false">Se connecter</button>
+    </div>
+    <p class="hint" id="authReason" hidden></p>
+    <form id="signupForm" novalidate>
+      <div class="field"><label for="suName">Nom ou pseudo</label><input type="text" id="suName" autocomplete="nickname" required></div>
+      <div class="field"><label for="suEmail">E-mail</label><input type="text" inputmode="email" id="suEmail" autocomplete="email" required></div>
+      <div class="field"><label for="suPass">Mot de passe</label><input type="password" id="suPass" autocomplete="new-password" minlength="8" required placeholder="8 caractères minimum"></div>
+      <div class="field"><span class="lbl">Vous êtes</span>
+        <div class="roles">
+          <label><input type="radio" name="role" value="createur" checked>Créateur<small>je publie mes vidéos</small></label>
+          <label><input type="radio" name="role" value="clippeur">Clippeur<small>je découpe et diffuse</small></label>
+          <label><input type="radio" name="role" value="marque">Marque<small>je lance des campagnes</small></label>
+        </div>
+      </div>
+      <p class="err" id="suErr" hidden></p>
+      <button class="btn primary" type="submit">Créer mon compte</button>
+    </form>
+    <form id="loginForm" novalidate hidden>
+      <div class="field"><label for="liEmail">E-mail</label><input type="text" inputmode="email" id="liEmail" autocomplete="email" required></div>
+      <div class="field"><label for="liPass">Mot de passe</label><input type="password" id="liPass" autocomplete="current-password" required></div>
+      <p class="err" id="liErr" hidden></p>
+      <button class="btn primary" type="submit">Se connecter</button>
+    </form>
+    <p class="note">Version de démonstration : votre profil reste dans ce navigateur. Aucun mot de passe n'est enregistré ni envoyé.</p>
+  </div>
+</dialog>
+
+<div class="drop" id="drop" hidden>Déposez votre vidéo ici</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  /* ---------- formats ---------- */
+  // Zones de sécurité : part de l'écran recouverte par l'interface de l'appli (valeurs approximatives).
+  const PRESETS = {
+    tiktok: { label: "TikTok", sub: "Vidéo", w: 9, h: 16, max: 600, ui: "TikTok",
+      safe: { t: .07, b: .21, l: .05, r: .13 }, tip: "Accrochez dans les 2 premières secondes et gardez le texte hors de la colonne de boutons à droite." },
+    reels: { label: "Instagram", sub: "Reels", w: 9, h: 16, max: 180, ui: "Instagram",
+      safe: { t: .1, b: .2, l: .05, r: .12 }, tip: "La légende et les boutons couvrent le bas du Reel : montez vos sous-titres vers le centre." },
+    shorts: { label: "YouTube", sub: "Shorts", w: 9, h: 16, max: 180, ui: "YouTube",
+      safe: { t: .08, b: .2, l: .05, r: .15 }, tip: "Un Short peut durer jusqu'à 3 minutes. Les boutons à droite sont plus larges que sur TikTok." },
+    igfeed: { label: "Instagram", sub: "Feed", w: 4, h: 5, max: null, ui: null, safe: null,
+      tip: "Le 4:5 prend le plus de place possible dans le fil Instagram et Facebook." },
+    square: { label: "Carré", sub: "1:1", w: 1, h: 1, max: null, ui: null, safe: null,
+      tip: "Le carré passe partout : fil Instagram, LinkedIn, X." },
+    youtube: { label: "YouTube", sub: "Vidéo", w: 16, h: 9, max: null, ui: null, safe: null,
+      tip: "Format horizontal classique pour une vidéo YouTube longue ou un extrait." },
+  };
+  const FONTS = {
+    anton: (px) => `400 ${px}px Anton, Impact, "Arial Narrow", sans-serif`,
+    bricolage: (px) => `800 ${px}px "Bricolage Grotesque", "Arial Black", sans-serif`,
+    marker: (px) => `400 ${px}px "Permanent Marker", "Comic Sans MS", cursive`,
+  };
+
+  /* ---------- état ---------- */
+  const S = {
+    preset: "tiktok", fit: "cover", bg: "blur", bgColor: "#101318",
+    zoom: 1, panX: 0, panY: 0, speed: 1,
+    start: 1, end: 16,
+    title: "3 réglages pour un clip qui accroche", titleStyle: "band", titlePos: "top", titleSize: 1,
+    font: "anton", accent: "#ffd23f",
+    handle: "@rush.studio", showHandle: true, progress: true,
+    capStyle: "karaoke", capY: .7, capSize: 1,
+    cues: [
+      { start: 1.2, end: 4.4, text: "Ceci est une vidéo de démonstration" },
+      { start: 4.6, end: 8.2, text: "Importez la vôtre avec le bouton en haut" },
+      { start: 8.4, end: 12, text: "Choisissez TikTok, Reels ou Shorts" },
+      { start: 12.2, end: 15.8, text: "Puis exportez votre clip en un clic" },
+    ],
+    safe: true, quality: 1080, fps: 30,
+  };
+
+  /* ---------- source : démo animée ou vidéo importée ---------- */
+  const video = document.createElement("video");
+  video.playsInline = true; video.preload = "auto";
+  const demoCanvas = document.createElement("canvas");
+  demoCanvas.width = 1920; demoCanvas.height = 1080;
+  const src = { kind: "demo", w: 1920, h: 1080, duration: 20, t: 0, playing: false, wall: 0, url: null };
+
+  function drawDemo(c, t) {
+    const g = c.getContext("2d"), W = c.width, H = c.height;
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, `hsl(${228 + t * 2}, 55%, 16%)`);
+    sky.addColorStop(.62, `hsl(${320 + t * 2}, 55%, 42%)`);
+    sky.addColorStop(1, `hsl(${28 + t}, 90%, 60%)`);
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    // soleil
+    g.fillStyle = "hsl(42, 100%, 72%)";
+    g.beginPath(); g.arc(W * .72, H * .6 - t * 9, 150, 0, Math.PI * 2); g.fill();
+    // collines
+    const hills = [[.66, 60, .0016, "hsl(300, 30%, 22%)", 30], [.76, 45, .0024, "hsl(260, 35%, 14%)", 70], [.86, 30, .0035, "hsl(240, 40%, 8%)", 140]];
+    for (const [base, amp, f, col, sp] of hills) {
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W; x += 20) g.lineTo(x, H * base + Math.sin((x + t * sp) * f * 2) * amp + Math.sin((x + t * sp) * f * 5) * amp * .4);
+      g.lineTo(W, H); g.fill();
+    }
+    // sujet : un personnage qui traverse l'image (utile pour tester le recadrage)
+    const p = .5 - .5 * Math.cos(t / 20 * Math.PI * 2);
+    const x = W * (.18 + .64 * p), y = H * .8 - Math.abs(Math.sin(t * 5)) * 60;
+    g.fillStyle = "#101421";
+    g.beginPath(); g.arc(x, y - 190, 42, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.roundRect ? g.roundRect(x - 48, y - 140, 96, 150, 40) : g.rect(x - 48, y - 140, 96, 150); g.fill();
+    g.fillStyle = "hsl(42, 100%, 60%)";
+    g.fillRect(x - 70, y + 12, 140, 14);
+    // habillage
+    g.fillStyle = "rgba(255,255,255,.9)";
+    g.font = "600 34px 'JetBrains Mono', monospace";
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText("VIDÉO DE DÉMO · 1920×1080", 60, 50);
+    g.textAlign = "right";
+    g.fillText(fmt(t), W - 60, 50);
+  }
+
+  function srcTime() {
+    if (src.kind === "video") return video.currentTime;
+    return src.playing ? Math.min(src.duration, src.t + (performance.now() - src.wall) / 1000 * S.speed) : src.t;
+  }
+  function isPlaying() { return src.kind === "video" ? !video.paused && !video.ended : src.playing; }
+  function frameImage(t) {
+    if (src.kind === "video") return video;
+    drawDemo(demoCanvas, t); return demoCanvas;
+  }
+  function play() {
+    const t = srcTime();
+    if (t >= S.end - .05 || t < S.start - .05) seek(S.start);
+    if (src.kind === "video") {
+      video.playbackRate = S.speed;
+      video.play().catch(() => toast("La lecture a été bloquée par le navigateur. Cliquez à nouveau sur Lecture."));
+    } else { src.t = srcTime(); src.wall = performance.now(); src.playing = true; }
+    syncPlayBtn();
+  }
+  function pause() {
+    if (src.kind === "video") video.pause();
+    else { src.t = srcTime(); src.playing = false; }
+    syncPlayBtn();
+  }
+  function seek(t) {
+    t = clamp(t, 0, src.duration);
+    if (src.kind === "video") {
+      return new Promise((res) => {
+        const done = () => { clearTimeout(to); res(); };
+        const to = setTimeout(done, 1500);
+        video.addEventListener("seeked", done, { once: true });
+        video.currentTime = t;
+      });
+    }
+    src.t = t; src.wall = performance.now();
+    return Promise.resolve();
+  }
+  video.addEventListener("play", syncPlayBtn);
+  video.addEventListener("pause", syncPlayBtn);
+
+  async function loadFile(file) {
+    if (!file || !file.type.startsWith("video/")) { toast("Ce fichier n'est pas une vidéo. Choisissez un MP4, MOV ou WebM."); return; }
+    if (exporting) { toast("Attendez la fin de l'export avant d'importer une autre vidéo."); return; }
+    pause();
+    if (src.url) URL.revokeObjectURL(src.url);
+    src.url = URL.createObjectURL(file);
+    video.src = src.url;
+    try {
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = res;
+        video.onerror = () => rej(new Error("decode"));
+      });
+    } catch {
+      toast("Impossible de lire cette vidéo dans le navigateur. Essayez un MP4 (H.264).");
+      return;
+    }
+    src.kind = "video"; src.w = video.videoWidth || 1280; src.h = video.videoHeight || 720;
+    src.duration = isFinite(video.duration) ? video.duration : 60;
+    S.start = 0; S.end = Math.min(src.duration, 60);
+    S.cues = []; S.zoom = 1; S.panX = 0; S.panY = 0;
+    await seek(0);
+    $("#srcName").textContent = `${file.name} · ${src.w}×${src.h} · ${fmt(src.duration)}`;
+    syncAll(); renderCues(); buildStrip();
+    toast(src.duration > 60 ? "Vidéo importée. Le clip est réglé sur la première minute : ajustez les poignées." : "Vidéo importée.");
+  }
+
+  /* ---------- rendu ---------- */
+  const view = $("#view"), vctx = view.getContext("2d");
+  const blurCanvas = document.createElement("canvas"), bctx = blurCanvas.getContext("2d");
+  const exportCanvas = document.createElement("canvas"), ectx = exportCanvas.getContext("2d");
+
+  function outDims(q) {
+    const p = PRESETS[S.preset];
+    const even = (n) => Math.round(n / 2) * 2;
+    return p.w <= p.h ? { W: q, H: even(q * p.h / p.w) } : { W: even(q * p.w / p.h), H: q };
+  }
+  function safeOf(p) { return p.safe || { t: .05, b: .05, l: .05, r: .05 }; }
+
+  function render(ctx, W, H, t, preview) {
+    const p = PRESETS[S.preset], safe = safeOf(p);
+    const img = frameImage(t), sw = src.w, sh = src.h;
+    const u = Math.min(W, H) / 1080;
+    ctx.save();
+    ctx.fillStyle = S.bgColor; ctx.fillRect(0, 0, W, H);
+    const cover = Math.max(W / sw, H / sh), contain = Math.min(W / sw, H / sh);
+    if (S.fit === "contain" && S.bg === "blur") {
+      // flou peu coûteux : réduction extrême puis agrandissement lissé
+      const bw = Math.max(8, Math.round(W / 26)), bh = Math.max(8, Math.round(H / 26));
+      if (blurCanvas.width !== bw || blurCanvas.height !== bh) { blurCanvas.width = bw; blurCanvas.height = bh; }
+      const c2 = Math.max(bw / sw, bh / sh);
+      bctx.drawImage(img, (bw - sw * c2) / 2, (bh - sh * c2) / 2, sw * c2, sh * c2);
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(blurCanvas, 0, 0, W, H);
+      ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 0, W, H);
+    }
+    const sc = (S.fit === "cover" ? cover : contain) * S.zoom;
+    const dw = sw * sc, dh = sh * sc;
+    const cx = (W - dw) / 2, cy = (H - dh) / 2;
+    ctx.drawImage(img, cx * (1 + S.panX), cy * (1 + S.panY), dw, dh);
+
+    // habillage
+    let topY = H * safe.t + 24 * u;
+    if (S.showHandle && S.handle.trim()) {
+      ctx.font = `600 ${30 * u}px "Familjen Grotesk", system-ui, sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 8 * u;
+      ctx.fillStyle = "rgba(255,255,255,.88)";
+      const hx = W * (safe.l + (1 - safe.l - safe.r) / 2);
+      ctx.fillText(S.handle.trim(), hx, topY);
+      ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
+      topY += 58 * u;
+    }
+    drawTitle(ctx, W, H, u, safe, topY);
+    drawCaption(ctx, W, H, u, safe, t);
+    if (S.progress) {
+      const f = clamp((t - S.start) / Math.max(.01, S.end - S.start), 0, 1);
+      const bh = Math.max(4, 10 * u);
+      ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.fillRect(0, H - bh, W, bh);
+      ctx.fillStyle = S.accent; ctx.fillRect(0, H - bh, W * f, bh);
+    }
+    if (preview && S.safe) drawSafe(ctx, W, H, u, p, safe);
+    ctx.restore();
+  }
+
+  function layoutWords(ctx, words, maxW) {
+    const space = ctx.measureText(" ").width;
+    const lines = []; let line = [], lw = 0;
+    words.forEach((text, i) => {
+      const w = ctx.measureText(text).width;
+      if (line.length && lw + space + w > maxW) { lines.push({ words: line, w: lw }); line = []; lw = 0; }
+      lw += (line.length ? space : 0) + w;
+      line.push({ text, w, i });
+    });
+    if (line.length) lines.push({ words: line, w: lw });
+    return { lines, space };
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  }
+
+  function drawTitle(ctx, W, H, u, safe, topY) {
+    const text = S.title.trim();
+    if (!text) return;
+    const size = 72 * u * S.titleSize;
+    ctx.font = FONTS[S.font](size);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    const areaL = W * safe.l, areaW = W * (1 - safe.l - safe.r);
+    const padX = size * .35, lh = size * 1.18;
+    const words = (S.font === "anton" ? text.toUpperCase() : text).split(/\s+/);
+    const { lines, space } = layoutWords(ctx, words, areaW - padX * 2 - 20 * u);
+    const blockH = lines.length * lh;
+    let y = S.titlePos === "center" ? H * .42 - blockH / 2 : topY;
+    lines.forEach((ln) => {
+      const x = areaL + (areaW - ln.w) / 2;
+      if (S.titleStyle === "band") {
+        ctx.fillStyle = S.accent;
+        roundRect(ctx, x - padX, y, ln.w + padX * 2, lh - 4 * u, 10 * u); ctx.fill();
+        ctx.fillStyle = inkFor(S.accent);
+        ctx.fillText(ln.words.map((w) => w.text).join(" "), x, y + lh * .8);
+      } else if (S.titleStyle === "outline") {
+        ctx.lineJoin = "round"; ctx.lineWidth = size * .16; ctx.strokeStyle = "#000";
+        const s = ln.words.map((w) => w.text).join(" ");
+        ctx.strokeText(s, x, y + lh * .8);
+        ctx.fillStyle = "#fff"; ctx.fillText(s, x, y + lh * .8);
+      } else {
+        ctx.shadowColor = "rgba(0,0,0,.75)"; ctx.shadowBlur = 18 * u; ctx.shadowOffsetY = 3 * u;
+        ctx.fillStyle = "#fff"; ctx.fillText(ln.words.map((w) => w.text).join(" "), x, y + lh * .8);
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowColor = "transparent";
+      }
+      y += lh;
+    });
+    void space;
+  }
+
+  function activeCue(t) { return S.cues.find((c) => t >= c.start && t < c.end); }
+
+  function drawCaption(ctx, W, H, u, safe, t) {
+    const c = activeCue(t);
+    if (!c || !c.text.trim()) return;
+    const size = 64 * u * S.capSize;
+    ctx.font = FONTS[S.font](size);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    const areaL = W * safe.l, areaW = W * (1 - safe.l - safe.r);
+    const words = (S.capStyle === "karaoke" && S.font === "anton" ? c.text.toUpperCase() : c.text).trim().split(/\s+/);
+    const { lines, space } = layoutWords(ctx, words, areaW - 40 * u);
+    const lh = size * 1.22;
+    const n = words.length;
+    const cur = clamp(Math.floor((t - c.start) / Math.max(.05, c.end - c.start) * n), 0, n - 1);
+    let y = H * S.capY - lines.length * lh / 2;
+    lines.forEach((ln) => {
+      let x = areaL + (areaW - ln.w) / 2;
+      const base = y + lh * .78;
+      if (S.capStyle === "box") {
+        ctx.fillStyle = "rgba(0,0,0,.72)";
+        roundRect(ctx, x - size * .3, y + lh * .04, ln.w + size * .6, lh * .98, 12 * u); ctx.fill();
+      }
+      ln.words.forEach((w) => {
+        if (S.capStyle === "karaoke") {
+          ctx.lineJoin = "round"; ctx.lineWidth = size * .2; ctx.strokeStyle = "#000";
+          ctx.strokeText(w.text, x, base);
+          ctx.fillStyle = w.i === cur ? S.accent : "#fff";
+          ctx.fillText(w.text, x, base);
+        } else if (S.capStyle === "box") {
+          ctx.fillStyle = w.i <= cur ? "#fff" : "rgba(255,255,255,.55)";
+          ctx.fillText(w.text, x, base);
+        } else {
+          ctx.shadowColor = "rgba(0,0,0,.85)"; ctx.shadowBlur = 14 * u; ctx.shadowOffsetY = 2 * u;
+          ctx.fillStyle = "#fff"; ctx.fillText(w.text, x, base);
+          ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowColor = "transparent";
+        }
+        x += w.w + space;
+      });
+      y += lh;
+    });
+  }
+
+  function drawSafe(ctx, W, H, u, p, safe) {
+    const x0 = W * safe.l, y0 = H * safe.t, x1 = W * (1 - safe.r), y1 = H * (1 - safe.b);
+    if (p.safe) {
+      ctx.fillStyle = "rgba(92,198,255,.16)";
+      ctx.fillRect(0, 0, W, y0);
+      ctx.fillRect(0, y1, W, H - y1);
+      ctx.fillRect(x1, y0, W - x1, y1 - y0);
+      ctx.fillRect(0, y0, x0, y1 - y0);
+      ctx.fillStyle = "rgba(255,255,255,.75)";
+      ctx.font = `600 ${22 * u}px "Familjen Grotesk", sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(`Interface ${p.ui} : légende, pseudo, musique`, W / 2, (y1 + H) / 2);
+      ctx.save(); ctx.translate((x1 + W) / 2, (y0 + y1) / 2); ctx.rotate(Math.PI / 2);
+      ctx.fillText("Boutons j'aime · commentaires · partage", 0, 0); ctx.restore();
+    }
+    ctx.setLineDash([10 * u, 8 * u]); ctx.lineWidth = Math.max(1, 2 * u);
+    ctx.strokeStyle = "rgba(92,198,255,.9)";
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.setLineDash([]);
+  }
+
+  function inkFor(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+    return (r * 299 + g * 587 + b * 114) / 1000 > 140 ? "#111" : "#fff";
+  }
+
+  /* ---------- taille de l'aperçu ---------- */
+  function fitView() {
+    const stage = $("#stage"), p = PRESETS[S.preset];
+    const aw = stage.clientWidth - 32, ah = stage.clientHeight - 32;
+    if (aw <= 0 || ah <= 0) return;
+    const r = p.w / p.h;
+    let cw = aw, ch = aw / r;
+    if (ch > ah) { ch = ah; cw = ah * r; }
+    view.style.width = Math.floor(cw) + "px"; view.style.height = Math.floor(ch) + "px";
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    view.width = Math.round(cw * dpr); view.height = Math.round(ch * dpr);
+    const d = outDims(S.quality);
+    $("#stageTag").innerHTML = `<b>${p.label} ${p.sub}</b> · ${p.w}:${p.h} · ${d.W}×${d.H}`;
+  }
+  new ResizeObserver(fitView).observe($("#stage"));
+
+  /* ---------- boucle ---------- */
+  let lastUi = "";
+  function tick() {
+    if (!exporting && !view.offsetParent) { requestAnimationFrame(tick); return; }
+    let t = srcTime();
+    if (isPlaying() || (src.kind === "video" && video.ended && exporting)) {
+      if (t >= S.end - .02 || (src.kind === "video" && video.ended)) {
+        if (exporting) { finishRecording(); t = S.end; }
+        else { seek(S.start); t = S.start; }
+      }
+    }
+    if (exporting) {
+      render(ectx, exportCanvas.width, exportCanvas.height, t, false);
+      vctx.drawImage(exportCanvas, 0, 0, view.width, view.height);
+      const pct = clamp((t - S.start) / (S.end - S.start), 0, 1);
+      $("#expBar").style.width = (pct * 100).toFixed(1) + "%";
+      $("#expPct").textContent = Math.round(pct * 100) + " %";
+    } else {
+      render(vctx, view.width, view.height, t, true);
+    }
+    const ui = fmt(t);
+    if (ui !== lastUi) {
+      lastUi = ui; $("#tcNow").textContent = ui;
+      $("#playhead").style.left = (t / src.duration * 100) + "%";
+      const ac = activeCue(t);
+      $$(".cue").forEach((el, i) => el.classList.toggle("active", S.cues[i] === ac));
+    }
+    requestAnimationFrame(tick);
+  }
+
+  /* ---------- timeline ---------- */
+  const tl = $("#timeline");
+  function syncTimeline() {
+    const d = src.duration, a = S.start / d * 100, b = S.end / d * 100;
+    $("#shadeL").style.left = "0"; $("#shadeL").style.width = a + "%";
+    $("#shadeR").style.left = b + "%"; $("#shadeR").style.right = "0";
+    $("#sel").style.left = a + "%"; $("#sel").style.width = (b - a) + "%";
+    $("#hStart").style.left = a + "%"; $("#hEnd").style.left = b + "%";
+    $("#hStart").setAttribute("aria-valuetext", fmt(S.start));
+    $("#hEnd").setAttribute("aria-valuetext", fmt(S.end));
+    $("#cueMarks").innerHTML = S.cues.map((c) =>
+      `<div class="cue-mark" style="left:${c.start / d * 100}%;width:${Math.max(.3, (c.end - c.start) / d * 100)}%"></div>`).join("");
+    $("#tStart").textContent = fmt(S.start);
+    $("#tEnd").textContent = fmt(S.end);
+    $("#tcDur").textContent = fmt(src.duration);
+    const len = (S.end - S.start) / S.speed;
+    $("#tLen").textContent = len.toFixed(1).replace(".", ",") + " s" + (S.speed !== 1 ? ` (${String(S.speed).replace(".", ",")}×)` : "");
+    const p = PRESETS[S.preset], st = $("#status");
+    if (p.max && len > p.max) { st.className = "status warn"; st.textContent = `Trop long pour ${p.label} ${p.sub} : ${fmtDur(p.max)} max`; }
+    else if (p.w < p.h && len > 90) { st.className = "status info"; st.textContent = "Accepté, mais long pour un format court"; }
+    else if (len < 3) { st.className = "status warn"; st.textContent = "Clip très court"; }
+    else { st.className = "status ok"; st.textContent = `Durée adaptée à ${p.label} ${p.sub}`; }
+  }
+
+  let drag = null;
+  tl.addEventListener("pointerdown", (e) => {
+    if (exporting) return;
+    tl.setPointerCapture(e.pointerId);
+    const kind = e.target.id === "hStart" ? "start" : e.target.id === "hEnd" ? "end" : "seek";
+    drag = { kind, wasPlaying: isPlaying() };
+    if (kind === "seek") pause();
+    moveDrag(e);
+  });
+  tl.addEventListener("pointermove", (e) => { if (drag) moveDrag(e); });
+  const endDrag = () => { drag = null; };
+  tl.addEventListener("pointerup", endDrag);
+  tl.addEventListener("pointercancel", endDrag);
+  function moveDrag(e) {
+    const r = tl.getBoundingClientRect();
+    const t = clamp((e.clientX - r.left) / r.width, 0, 1) * src.duration;
+    const MIN = .5;
+    if (drag.kind === "start") { S.start = clamp(t, 0, S.end - MIN); seek(S.start); }
+    else if (drag.kind === "end") { S.end = clamp(t, S.start + MIN, src.duration); seek(S.end - .05); }
+    else seek(t);
+    syncTimeline();
+  }
+  function nudgeHandle(which, e) {
+    const step = e.shiftKey ? 1 : .1;
+    const d = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    if (!d) return;
+    e.preventDefault();
+    if (which === "start") S.start = clamp(S.start + d, 0, S.end - .5);
+    else S.end = clamp(S.end + d, S.start + .5, src.duration);
+    seek(which === "start" ? S.start : S.end - .05); syncTimeline();
+  }
+  $("#hStart").addEventListener("keydown", (e) => nudgeHandle("start", e));
+  $("#hEnd").addEventListener("keydown", (e) => nudgeHandle("end", e));
+
+  let stripJob = 0;
+  async function buildStrip() {
+    const job = ++stripJob, strip = $("#strip");
+    strip.innerHTML = "";
+    const n = Math.max(4, Math.min(14, Math.round(tl.clientWidth / 90)));
+    const th = 64, tw = Math.round(th * src.w / src.h);
+    const cans = [];
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement("canvas"); c.width = tw; c.height = th;
+      strip.appendChild(c); cans.push(c);
+    }
+    if (src.kind === "demo") {
+      const tmp = document.createElement("canvas"); tmp.width = 1920; tmp.height = 1080;
+      cans.forEach((c, i) => { drawDemo(tmp, (i + .5) / n * src.duration); c.getContext("2d").drawImage(tmp, 0, 0, tw, th); });
+      return;
+    }
+    const tv = document.createElement("video");
+    tv.muted = true; tv.preload = "auto"; tv.src = src.url;
+    await new Promise((r) => { tv.onloadeddata = r; tv.onerror = r; });
+    for (let i = 0; i < n; i++) {
+      if (job !== stripJob) return;
+      await new Promise((r) => { const to = setTimeout(r, 2000); tv.onseeked = () => { clearTimeout(to); r(); }; tv.currentTime = (i + .5) / n * src.duration; });
+      try { cans[i].getContext("2d").drawImage(tv, 0, 0, tw, th); } catch { /* image indisponible */ }
+    }
+    tv.removeAttribute("src"); tv.load();
+  }
+
+  /* ---------- déplacer le cadre à la souris ---------- */
+  let pan = null;
+  view.addEventListener("pointerdown", (e) => {
+    if (exporting) return;
+    view.setPointerCapture(e.pointerId); view.classList.add("dragging");
+    pan = { x: e.clientX, y: e.clientY, px: S.panX, py: S.panY };
+  });
+  view.addEventListener("pointermove", (e) => {
+    if (!pan) return;
+    const k = view.width / view.clientWidth;
+    const W = view.width, H = view.height;
+    const cover = Math.max(W / src.w, H / src.h), contain = Math.min(W / src.w, H / src.h);
+    const sc = (S.fit === "cover" ? cover : contain) * S.zoom;
+    const cx = (W - src.w * sc) / 2, cy = (H - src.h * sc) / 2;
+    if (Math.abs(cx) > 1) S.panX = clamp(pan.px + (e.clientX - pan.x) * k / cx, -1, 1);
+    if (Math.abs(cy) > 1) S.panY = clamp(pan.py + (e.clientY - pan.y) * k / cy, -1, 1);
+    syncFraming();
+  });
+  const endPan = () => { pan = null; view.classList.remove("dragging"); };
+  view.addEventListener("pointerup", endPan);
+  view.addEventListener("pointercancel", endPan);
+
+  /* ---------- panneau ---------- */
+  function buildPresets() {
+    $("#presets").innerHTML = Object.entries(PRESETS).map(([k, p]) => {
+      const sw = p.w >= p.h ? 30 : Math.round(30 * p.w / p.h), sh = p.h >= p.w ? 30 : Math.round(30 * p.h / p.w);
+      return `<button type="button" class="preset" data-preset="${k}" aria-pressed="false">
+        <span class="shape" style="width:${sw}px;height:${sh}px"></span>
+        <span><b>${p.label}</b><small>${p.sub} · ${p.w}:${p.h}</small></span></button>`;
+    }).join("");
+    $$(".preset").forEach((b) => b.addEventListener("click", () => {
+      if (exporting) return;
+      S.preset = b.dataset.preset; syncAll();
+    }));
+  }
+  function syncPreset() {
+    const p = PRESETS[S.preset], d = outDims(1080);
+    $$(".preset").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.preset === S.preset)));
+    $("#spec").innerHTML = `
+      <dt>Ratio</dt><dd>${p.w}:${p.h}</dd>
+      <dt>Résolution</dt><dd>${d.W} × ${d.H} px</dd>
+      <dt>Durée max</dt><dd>${p.max ? fmtDur(p.max) : "pas de limite courte"}</dd>
+      <dt>Zone sûre</dt><dd>${p.safe ? `haut ${pc(p.safe.t)} · bas ${pc(p.safe.b)} · droite ${pc(p.safe.r)}` : "marges de 5 %"}</dd>`;
+    $("#presetTip").textContent = p.tip;
+    $("#safeBtn").textContent = p.safe ? "Zones d'interface" : "Marges de sécurité";
+    fitView(); syncTimeline(); syncExportSpec();
+  }
+  const pc = (v) => Math.round(v * 100) + " %";
+
+  function syncSegs() {
+    $$(".seg").forEach((seg) => {
+      const key = seg.dataset.key;
+      seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(String(S[key]) === b.dataset.v)));
+    });
+    $("#bgField").style.opacity = S.fit === "contain" ? "1" : ".5";
+  }
+  $$(".seg").forEach((seg) => seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b || exporting) return;
+    const key = seg.dataset.key, v = b.dataset.v;
+    if (key === "speed") {
+      const wasT = srcTime();
+      S.speed = parseFloat(v);
+      if (src.kind === "video") video.playbackRate = S.speed;
+      else { src.t = wasT; src.wall = performance.now(); }
+    } else if (key === "quality" || key === "fps") S[key] = parseInt(v, 10);
+    else S[key] = v;
+    syncSegs(); syncTimeline(); syncExportSpec(); fitView();
+  }));
+
+  function syncFraming() {
+    $("#zoom").value = S.zoom; $("#zoomOut").textContent = Math.round(S.zoom * 100) + " %";
+    $("#panX").value = S.panX; $("#panXOut").textContent = S.panX.toFixed(2);
+    $("#panY").value = S.panY; $("#panYOut").textContent = S.panY.toFixed(2);
+  }
+  $("#zoom").addEventListener("input", (e) => { S.zoom = +e.target.value; syncFraming(); });
+  $("#panX").addEventListener("input", (e) => { S.panX = +e.target.value; syncFraming(); });
+  $("#panY").addEventListener("input", (e) => { S.panY = +e.target.value; syncFraming(); });
+  $("#recenter").addEventListener("click", () => { S.zoom = 1; S.panX = 0; S.panY = 0; syncFraming(); });
+  $("#bgColor").addEventListener("input", (e) => { S.bgColor = e.target.value; });
+
+  function syncText() {
+    $("#title").value = S.title;
+    $("#titleSize").value = S.titleSize; $("#titleSizeOut").textContent = Math.round(S.titleSize * 100) + " %";
+    $("#font").value = S.font; $("#accent").value = S.accent;
+    $("#handle").value = S.handle; $("#showHandle").checked = S.showHandle;
+    $("#progress").checked = S.progress;
+    $("#bgColor").value = S.bgColor;
+    $("#capY").value = S.capY; $("#capYOut").textContent = Math.round(S.capY * 100) + " %";
+    $("#capSize").value = S.capSize; $("#capSizeOut").textContent = Math.round(S.capSize * 100) + " %";
+  }
+  $("#title").addEventListener("input", (e) => { S.title = e.target.value; });
+  $("#titleSize").addEventListener("input", (e) => { S.titleSize = +e.target.value; syncText(); });
+  $("#font").addEventListener("change", (e) => { S.font = e.target.value; });
+  $("#accent").addEventListener("input", (e) => { S.accent = e.target.value; });
+  $("#handle").addEventListener("input", (e) => { S.handle = e.target.value; });
+  $("#showHandle").addEventListener("change", (e) => { S.showHandle = e.target.checked; });
+  $("#progress").addEventListener("change", (e) => { S.progress = e.target.checked; });
+  $("#capY").addEventListener("input", (e) => { S.capY = +e.target.value; syncText(); });
+  $("#capSize").addEventListener("input", (e) => { S.capSize = +e.target.value; syncText(); });
+
+  /* sous-titres */
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function renderCues() {
+    S.cues.sort((a, b) => a.start - b.start);
+    $("#cues").innerHTML = S.cues.length ? S.cues.map((c, i) => `
+      <div class="cue" data-i="${i}">
+        <input type="number" step="0.1" min="0" value="${c.start.toFixed(1)}" data-f="start" aria-label="Début réplique ${i + 1}">
+        <input type="number" step="0.1" min="0" value="${c.end.toFixed(1)}" data-f="end" aria-label="Fin réplique ${i + 1}">
+        <input type="text" value="${esc(c.text)}" data-f="text" aria-label="Texte réplique ${i + 1}">
+        <button type="button" class="icon-btn" data-del="${i}" aria-label="Supprimer la réplique ${i + 1}">✕</button>
+      </div>`).join("") : `<p class="hint">Aucune réplique. Placez la tête de lecture puis cliquez sur « Ajouter au curseur », ou importez un fichier de sous-titres.</p>`;
+    $("#cueCount").textContent = S.cues.length;
+    syncTimeline();
+  }
+  $("#cues").addEventListener("input", (e) => {
+    const row = e.target.closest(".cue"); if (!row) return;
+    const c = S.cues[+row.dataset.i], f = e.target.dataset.f;
+    if (f === "text") c.text = e.target.value;
+    else { const v = parseFloat(e.target.value); if (!isNaN(v)) c[f] = clamp(v, 0, src.duration); }
+    syncTimeline();
+  });
+  $("#cues").addEventListener("change", (e) => { if (e.target.type === "number") renderCues(); });
+  $("#cues").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-del]"); if (!b) return;
+    S.cues.splice(+b.dataset.del, 1); renderCues();
+  });
+  $("#addCue").addEventListener("click", () => {
+    const t = srcTime();
+    S.cues.push({ start: +t.toFixed(1), end: +Math.min(src.duration, t + 2.5).toFixed(1), text: "Nouvelle réplique" });
+    renderCues();
+    const idx = S.cues.findIndex((c) => c.text === "Nouvelle réplique" && Math.abs(c.start - t) < .06);
+    const inp = document.querySelector(`.cue[data-i="${idx}"] input[type="text"]`);
+    if (inp) { inp.focus(); inp.select(); }
+  });
+  $("#clearCues").addEventListener("click", () => { S.cues = []; renderCues(); });
+  $("#srtIn").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; importSubs(f); });
+  async function importSubs(f) {
+    if (!f) return;
+    const cues = parseSubs(await f.text());
+    if (!cues.length) { toast("Aucune réplique trouvée. Vérifiez que le fichier est au format SRT ou WebVTT."); return; }
+    S.cues = cues; renderCues(); toast(`${cues.length} répliques importées.`);
+  }
+  function parseSubs(txt) {
+    const re = /(?:(\d+):)?(\d{1,2}):(\d{2})[,.](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{2})[,.](\d{1,3})/;
+    const sec = (h, m, s, ms) => (+h || 0) * 3600 + +m * 60 + +s + +ms.padEnd(3, "0") / 1000;
+    const out = [];
+    txt.replace(/\r/g, "").split(/\n\s*\n/).forEach((block) => {
+      const lines = block.split("\n");
+      const k = lines.findIndex((l) => re.test(l));
+      if (k < 0) return;
+      const m = lines[k].match(re);
+      const text = lines.slice(k + 1).join(" ").replace(/<[^>]+>/g, "").replace(/\{[^}]+\}/g, "").trim();
+      if (text) out.push({ start: sec(m[1], m[2], m[3], m[4]), end: sec(m[5], m[6], m[7], m[8]), text });
+    });
+    return out;
+  }
+
+  /* onglets */
+  $$(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+  function showTab(name) {
+    $$(".tabs button").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.tab === name)));
+    $$(".pane").forEach((p) => { p.hidden = p.dataset.pane !== name; });
+  }
+
+  /* ---------- export ---------- */
+  const MIMES = [
+    "video/mp4;codecs=avc1.42E01F,mp4a.40.2", "video/mp4;codecs=avc1,mp4a", "video/mp4",
+    "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm",
+  ];
+  const canRecord = typeof MediaRecorder !== "undefined" && !!exportCanvas.captureStream;
+  const pickMime = () => canRecord ? (MIMES.find((m) => MediaRecorder.isTypeSupported(m)) || "") : "";
+  function syncExportSpec() {
+    const d = outDims(S.quality), mime = pickMime();
+    const ext = mime.includes("mp4") ? "MP4" : mime ? "WebM" : "indisponible";
+    const len = (S.end - S.start) / S.speed;
+    $("#exportSpec").innerHTML = `
+      <dt>Format</dt><dd>${PRESETS[S.preset].label} ${PRESETS[S.preset].sub}</dd>
+      <dt>Image</dt><dd>${d.W} × ${d.H} · ${S.fps} i/s</dd>
+      <dt>Fichier</dt><dd>${ext}</dd>
+      <dt>Durée</dt><dd>${len.toFixed(1).replace(".", ",")} s (≈ temps d'export)</dd>`;
+    $("#formatNote").textContent = !canRecord
+      ? "Ce navigateur ne sait pas enregistrer de vidéo. Ouvrez la page dans Chrome, Edge, Firefox ou Safari récent."
+      : ext === "MP4"
+        ? "Le fichier MP4 s'envoie directement sur TikTok, Instagram et YouTube."
+        : "Ce navigateur exporte en WebM. YouTube l'accepte tel quel ; pour TikTok et Instagram, convertissez-le en MP4 ou exportez depuis Chrome ou Safari récents, qui produisent du MP4.";
+    $("#exportBtn").disabled = !canRecord;
+  }
+
+  let exporting = false, recorder = null, chunks = [], audioCtx = null, audioDest = null, lastExport = null, cancelled = false;
+
+  async function startExport() {
+    if (!canRecord || exporting) return;
+    showTab("export");
+    const d = outDims(S.quality);
+    exportCanvas.width = d.W; exportCanvas.height = d.H;
+    const stream = exportCanvas.captureStream(S.fps);
+    if (src.kind === "video") {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const node = audioCtx.createMediaElementSource(video);
+          audioDest = audioCtx.createMediaStreamDestination();
+          node.connect(audioCtx.destination); node.connect(audioDest);
+        }
+        await audioCtx.resume();
+        audioDest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+      } catch (err) { console.warn("audio", err); toast("Le son n'a pas pu être capturé : le clip sera muet."); }
+    }
+    const mime = pickMime();
+    try {
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: d.W * d.H > 1e6 ? 10e6 : 6e6 } : undefined);
+    } catch {
+      recorder = new MediaRecorder(stream);
+    }
+    chunks = []; cancelled = false;
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => onRecorded(recorder.mimeType || mime, d);
+    pause();
+    await seek(S.start);
+    exporting = true; setBusy(true);
+    render(ectx, d.W, d.H, S.start, false);
+    recorder.start(250);
+    play();
+  }
+  function finishRecording() {
+    if (!exporting) return;
+    exporting = false; pause();
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+  function onRecorded(mime, d) {
+    setBusy(false);
+    if (cancelled) { toast("Export annulé."); return; }
+    const type = (mime || "video/webm").split(";")[0];
+    const blob = new Blob(chunks, { type });
+    const ext = type.includes("mp4") ? "mp4" : "webm";
+    const name = `clip-${S.preset}-${d.W}x${d.H}.${ext}`;
+    if (lastExport) URL.revokeObjectURL(lastExport.url);
+    lastExport = { blob, name, url: URL.createObjectURL(blob) };
+    $("#resultVid").src = lastExport.url;
+    $("#resultInfo").textContent = `${name} · ${(blob.size / 1048576).toFixed(1).replace(".", ",")} Mo`;
+    $("#result").hidden = false;
+    toast("Clip prêt. Vérifiez-le puis téléchargez-le.");
+  }
+  function setBusy(b) {
+    document.body.classList.toggle("exporting", b);
+    $("#progressBox").hidden = !b;
+    $("#tally").classList.toggle("rec", b);
+    $("#exportBtn").disabled = b; $("#goExport").disabled = b;
+    $("#expBar").style.width = "0"; $("#expPct").textContent = "0 %";
+  }
+  $("#exportBtn").addEventListener("click", startExport);
+  $("#goExport").addEventListener("click", startExport);
+  $("#cancelExport").addEventListener("click", () => { cancelled = true; finishRecording(); });
+
+  // Dans Claude, l'enregistrement passe par la capacité « downloads » ; ailleurs, un simple lien.
+  const dlReady = (window.claude && window.claude.use) ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null);
+  async function offerFile(blob, filename) {
+    let dl = null;
+    try { dl = await Promise.race([dlReady, new Promise((r) => setTimeout(() => r(null), 1500))]); } catch { dl = null; }
+    if (dl) {
+      try { await dl.save({ filename, data: blob }); toast("Fichier enregistré."); }
+      catch (err) {
+        const code = err && err.code;
+        if (code === "declined") toast("Téléchargement annulé.");
+        else if (code === "rate_limited") toast("Une demande d'enregistrement est déjà ouverte.");
+        else toast("L'enregistrement n'est pas disponible ici.");
+      }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  $("#saveBtn").addEventListener("click", () => { if (lastExport) offerFile(lastExport.blob, lastExport.name); });
+  $("#thumbBtn").addEventListener("click", () => {
+    const d = outDims(S.quality), c = document.createElement("canvas");
+    c.width = d.W; c.height = d.H;
+    render(c.getContext("2d"), d.W, d.H, srcTime(), false);
+    c.toBlob((b) => b && offerFile(b, `miniature-${S.preset}-${d.W}x${d.H}.png`), "image/png");
+  });
+
+  /* ---------- transport, raccourcis, dépôt ---------- */
+  function syncPlayBtn() {
+    const p = isPlaying();
+    $("#icoPlay").hidden = p; $("#icoPause").hidden = !p;
+    $("#playBtn").setAttribute("aria-label", p ? "Pause" : "Lecture");
+  }
+  function togglePlay() { if (exporting) return; isPlaying() ? pause() : play(); }
+  $("#playBtn").addEventListener("click", togglePlay);
+  $("#safeBtn").addEventListener("click", () => { S.safe = !S.safe; $("#safeBtn").setAttribute("aria-pressed", String(S.safe)); });
+  const setIn = () => { if (exporting) return; S.start = clamp(srcTime(), 0, S.end - .5); syncTimeline(); };
+  const setOut = () => { if (exporting) return; S.end = clamp(srcTime(), S.start + .5, src.duration); syncTimeline(); };
+  $("#setIn").addEventListener("click", setIn);
+  $("#setOut").addEventListener("click", setOut);
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, select, [role=slider], dialog")) return;
+    if (!$("#stage").offsetParent) return;
+    if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "i" || e.key === "I") setIn();
+    else if (e.key === "o" || e.key === "O") setOut();
+  });
+  $("#fileIn").addEventListener("change", (e) => { loadFile(e.target.files[0]); e.target.value = ""; });
+  let toastTimer = 0;
+  function toast(msg) {
+    const el = $("#toast"); el.textContent = msg; el.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+
+  function fmt(t) {
+    t = Math.max(0, t || 0);
+    const m = Math.floor(t / 60), s = t - m * 60;
+    return String(m).padStart(2, "0") + ":" + s.toFixed(1).padStart(4, "0");
+  }
+  function fmtDur(s) { return s >= 60 ? (s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`) : `${s} s`; }
+
+  function syncAll() { syncPreset(); syncSegs(); syncFraming(); syncText(); syncTimeline(); syncExportSpec(); syncPlayBtn(); }
+
+  buildPresets(); syncAll(); renderCues(); buildStrip();
+  window.addEventListener("resize", () => { clearTimeout(window.__st); window.__st = setTimeout(buildStrip, 250); });
+  seek(S.start);
+  window.RushStudio = {
+    loadFile, importSubs,
+    setRange(a, b) { S.start = clamp(a, 0, src.duration); S.end = clamp(b, S.start + .5, src.duration); syncTimeline(); syncExportSpec(); seek(S.start); },
+    applyTemplate(t) { Object.assign(S, t); syncAll(); },
+    refresh() { fitView(); buildStrip(); },
+  };
+  if (document.fonts) document.fonts.ready.then(() => { if (src.kind === "demo") buildStrip(); });
+  requestAnimationFrame(tick);
+})();
+</script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const nf = new Intl.NumberFormat("fr-FR");
+  const nfc = new Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 });
+  const eur = (v) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: v < 10 ? 2 : 0 }).format(v);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("rush." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("rush." + k, JSON.stringify(v)); } catch { /* stockage indisponible */ } },
+  };
+  let toastTimer = 0;
+  function toast(msg) {
+    const el = $("#toast"); el.textContent = msg; el.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3400);
+  }
+  function segValue(seg, v) { seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === String(v)))); }
+  function chipValue(box, v) { box.querySelectorAll(".chip").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === String(v)))); }
+
+  /* ================= fond : houle de points ================= */
+  (function waves() {
+    const c = $("#waves"), g = c.getContext("2d");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let W = 0, H = 0, dpr = 1, fov = 800, horizon = 0;
+    const mouse = { x: -1e4, y: -1e4, sx: -1e4, sy: -1e4 };
+    const ripples = [];
+    const Z0 = 1.25, Z1 = 14, CAM = 1.05;
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      fov = Math.max(H, W * .6) * .85;
+      horizon = H * .38;
+      if (reduce) draw(0);
+    }
+    function height(x, z, t) {
+      return Math.sin(x * .5 + t * .8 + z * .28) * .5
+        + Math.sin(z * .6 - t * 1.1) * .34
+        + Math.sin((x - z) * .3 + t * .4) * .26;
+    }
+    function draw(t) {
+      g.clearRect(0, 0, W, H);
+      mouse.sx += (mouse.x - mouse.sx) * .12; mouse.sy += (mouse.y - mouse.sy) * .12;
+      const R2 = 170 * 170;
+      const gap = W < 700 ? 20 : 17, rowGap = W < 700 ? 13 : 11;
+      for (let i = ripples.length - 1; i >= 0; i--) if (t - ripples[i].t > 2.4) ripples.splice(i, 1);
+      for (let z = Z1; z >= Z0; z -= rowGap * z * z / (CAM * fov)) {
+        const dx = gap * Math.pow(z, .92) / fov;
+        const half = (W / 2) / fov * z * 1.05;
+        const depth = 1 - (z - Z0) / (Z1 - Z0);
+        const x0 = Math.ceil(-half / dx) * dx;
+        for (let x = x0; x <= half; x += dx) {
+          const y = height(x, z, t);
+          const sx = W / 2 + x * fov / z;
+          let sy = horizon + (CAM - y) * fov / z;
+          if (sy > H + 10) continue;
+          const ddx = sx - mouse.sx, ddy = sy - mouse.sy, d2 = ddx * ddx + ddy * ddy;
+          const infl = d2 < R2 * 4 ? Math.exp(-d2 / R2) : 0;
+          sy -= infl * 34 * (.4 + depth);
+          let ring = 0;
+          for (const r of ripples) {
+            const age = t - r.t, rad = age * 520, d = Math.sqrt((sx - r.x) ** 2 + (sy - r.y) ** 2);
+            ring += Math.exp(-((d - rad) ** 2) / 1800) * (1 - age / 2.4);
+          }
+          sy -= ring * 22;
+          const crest = clamp((y + .9) / 1.8, 0, 1);
+          const hot = crest > .82 || infl > .35 || ring > .3;
+          g.globalAlpha = clamp((.18 + depth * .82) * (.4 + crest * .8) + infl * .6 + ring * .5, 0, 1);
+          g.fillStyle = hot ? "#f4b63c" : "#b9c3d4";
+          const s = Math.max(1.1, Math.min(3.2, 2.4 / Math.sqrt(z)) * (1 + infl * .9));
+          g.fillRect(sx - s / 2, sy - s / 2, s, s);
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    let last = 0;
+    function loop(now) {
+      requestAnimationFrame(loop);
+      if (document.hidden || document.body.classList.contains("exporting")) return;
+      if (now - last < 1000 / 45) return; // ~45 i/s suffisent pour un fond
+      last = now;
+      draw(now / 1000);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+    if (!reduce) {
+      window.addEventListener("pointermove", (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
+      document.addEventListener("pointerleave", () => { mouse.x = mouse.y = -1e4; });
+      window.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("button, a, input, textarea, select, label, canvas, .card, .studio-shell, dialog")) return;
+        ripples.push({ x: e.clientX, y: e.clientY, t: performance.now() / 1000 });
+      });
+      requestAnimationFrame(loop);
+    }
+  })();
+
+  /* ================= navigation ================= */
+  const VIEWS = ["accueil", "analyse", "creation", "promotion"];
+  let current = null;
+  function route() {
+    const h = location.hash.slice(1);
+    const v = VIEWS.includes(h) ? h : "accueil";
+    if (v === current) return;
+    const first = current === null;
+    current = v;
+    $$("section.view").forEach((s) => { s.hidden = s.dataset.view !== v; });
+    $$(".site-nav a").forEach((a) => { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    if (!first) window.scrollTo({ top: 0 });
+    if (v === "creation" && window.RushStudio) requestAnimationFrame(() => window.RushStudio.refresh());
+    if (v === "analyse") requestAnimationFrame(() => { drawEnergy(); drawLine(); });
+  }
+  window.addEventListener("hashchange", route);
+  const go = (v) => { if (location.hash !== "#" + v) location.hash = v; else route(); };
+
+  /* ================= compte ================= */
+  let user = store.get("user", null);
+  let pending = null;
+  const ROLE = { createur: "Créateur", clippeur: "Clippeur", marque: "Marque" };
+  function initials(n) { return n.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"; }
+  function renderAccount() {
+    const box = $("#account");
+    if (!user) {
+      box.innerHTML = `<button class="btn ghost" type="button" data-auth="login">Se connecter</button>
+        <button class="btn primary" type="button" data-auth="signup">Créer un compte</button>`;
+      return;
+    }
+    box.innerHTML = `<button class="me" type="button" id="meBtn" aria-haspopup="true" aria-expanded="false">
+        <span class="avatar">${esc(initials(user.name))}</span><span>${esc(user.name)} <small>· ${ROLE[user.role]}</small></span></button>
+      <div class="menu" id="meMenu" hidden>
+        <div class="who"><b>${esc(user.name)}</b><span>${esc(user.email)}</span></div>
+        <button type="button" data-go="analyse">Mes statistiques</button>
+        <button type="button" data-go="creation">Rush.Studio</button>
+        <button type="button" data-go="promotion">${user.role === "marque" ? "Mes campagnes" : "Campagnes rejointes"}</button>
+        <button type="button" id="logout">Se déconnecter</button>
+      </div>`;
+  }
+  $("#account").addEventListener("click", (e) => {
+    const a = e.target.closest("[data-auth]"); if (a) { openAuth(a.dataset.auth); return; }
+    if (e.target.closest("#meBtn")) {
+      const m = $("#meMenu"); m.hidden = !m.hidden; $("#meBtn").setAttribute("aria-expanded", String(!m.hidden)); return;
+    }
+    const gb = e.target.closest("[data-go]");
+    if (gb) {
+      $("#meMenu").hidden = true; go(gb.dataset.go);
+      if (gb.dataset.go === "promotion") setSide(user && user.role === "marque" ? "brand" : "clipper");
+      return;
+    }
+    if (e.target.closest("#logout")) { user = null; store.set("user", null); renderAccount(); renderCamps(); toast("Vous êtes déconnecté."); }
+  });
+  document.addEventListener("click", (e) => { const m = $("#meMenu"); if (m && !m.hidden && !e.target.closest(".account")) m.hidden = true; });
+
+  const dlg = $("#authDlg");
+  function setAuthMode(mode) {
+    segValue($("#authTabs"), mode);
+    $("#signupForm").hidden = mode !== "signup"; $("#loginForm").hidden = mode !== "login";
+    $("#authTitle").textContent = mode === "signup" ? "Créer un compte" : "Se connecter";
+    $$(".auth .err").forEach((el) => { el.hidden = true; });
+  }
+  function openAuth(mode, reason, then) {
+    pending = then || null;
+    setAuthMode(mode);
+    $("#authReason").hidden = !reason; $("#authReason").textContent = reason || "";
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+    setTimeout(() => (mode === "signup" ? $("#suName") : $("#liEmail")).focus(), 30);
+  }
+  function closeAuth() { if (dlg.close) dlg.close(); else dlg.removeAttribute("open"); }
+  $("#authClose").addEventListener("click", closeAuth);
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) closeAuth(); });
+  $("#authTabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setAuthMode(b.dataset.v); });
+  const emailOk = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
+  function showErr(id, msg) { const el = $(id); el.textContent = msg; el.hidden = false; }
+  function signedIn(u, msg) {
+    user = u; store.set("user", u); renderAccount(); renderCamps(); closeAuth(); toast(msg);
+    const cb = pending; pending = null; if (cb) cb();
+  }
+  $("#signupForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#suName").value.trim(), email = $("#suEmail").value.trim().toLowerCase(), pass = $("#suPass").value;
+    const role = (document.querySelector('input[name="role"]:checked') || {}).value || "createur";
+    if (!name) return showErr("#suErr", "Indiquez un nom ou un pseudo.");
+    if (!emailOk(email)) return showErr("#suErr", "Cette adresse e-mail n'est pas valide. Exemple : nom@domaine.fr");
+    if (pass.length < 8) return showErr("#suErr", "Le mot de passe doit contenir au moins 8 caractères.");
+    const accounts = store.get("accounts", {});
+    accounts[email] = { name, email, role };
+    store.set("accounts", accounts);
+    $("#suPass").value = "";
+    signedIn(accounts[email], `Bienvenue ${name} ! Votre compte ${ROLE[role].toLowerCase()} est créé.`);
+  });
+  $("#loginForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const email = $("#liEmail").value.trim().toLowerCase();
+    if (!emailOk(email)) return showErr("#liErr", "Cette adresse e-mail n'est pas valide.");
+    if (!$("#liPass").value) return showErr("#liErr", "Saisissez votre mot de passe.");
+    const acc = store.get("accounts", {})[email];
+    if (!acc) return showErr("#liErr", "Aucun compte avec cet e-mail dans ce navigateur. Créez un compte.");
+    $("#liPass").value = "";
+    signedIn(acc, `Bon retour, ${acc.name}.`);
+  });
+  function requireAccount(reason, then) { if (user) { then(); return; } openAuth("signup", reason, then); }
+
+  /* ================= analyse : moments forts ================= */
+  const AN = { hz: 4, energy: null, duration: 0, len: 30, file: null, name: "", moments: [] };
+  function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function sampleEnergy() {
+    const r = rng(7), n = 720 * AN.hz, e = new Float32Array(n);
+    const bumps = [[95, 22, .9], [212, 30, .75], [318, 16, 1], [455, 40, .7], [590, 25, .95], [660, 12, .6]];
+    for (let i = 0; i < n; i++) {
+      const s = i / AN.hz;
+      let v = .28 + .08 * Math.sin(s / 9) + r() * .16;
+      if (r() < .04) v *= .3; // silences entre les phrases
+      for (const [c, w, a] of bumps) v += a * Math.exp(-((s - c) ** 2) / (2 * w * w)) * (.55 + r() * .6);
+      e[i] = v;
+    }
+    return e;
+  }
+  function pct(arr, p) { const s = Array.from(arr).sort((a, b) => a - b); return s[Math.floor((s.length - 1) * p)] || 1; }
+  function findMoments(e, hz, lenS, k) {
+    const n = e.length, L = Math.min(n, Math.round(lenS * hz));
+    const p95 = pct(e, .95) || 1;
+    const en = Float32Array.from(e, (v) => Math.min(1, v / p95));
+    const df = new Float32Array(n);
+    for (let i = 1; i < n; i++) df[i] = Math.max(0, en[i] - en[i - 1]);
+    const d95 = pct(df, .95) || 1;
+    const pe = new Float64Array(n + 1), pd = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) { pe[i + 1] = pe[i] + en[i]; pd[i + 1] = pd[i] + Math.min(1, df[i] / d95); }
+    const scores = [];
+    for (let s = 0; s + L <= n; s += Math.max(1, Math.round(hz / 2))) {
+      scores.push({ s, v: (pe[s + L] - pe[s]) / L * .72 + (pd[s + L] - pd[s]) / L * .28 * 2.2 });
+    }
+    scores.sort((a, b) => b.v - a.v);
+    const picked = [];
+    for (const c of scores) {
+      if (picked.length >= k) break;
+      if (picked.every((p) => Math.abs(p.s - c.s) >= L)) picked.push(c);
+    }
+    const best = picked.length ? picked[0].v : 1;
+    return picked.map((p) => ({ start: p.s / hz, end: (p.s + L) / hz, score: clamp(p.v / Math.max(best, .0001) * (.72 + .26 * Math.min(1, best)), 0, 1) }));
+  }
+  const tfmt = (t) => { const m = Math.floor(t / 60), s = Math.floor(t % 60); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); };
+  function drawEnergy() {
+    const c = $("#energy"), w = c.clientWidth, h = c.clientHeight;
+    if (!w || !AN.energy) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = w * dpr; c.height = h * dpr;
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const e = AN.energy, n = e.length, top = pct(e, .99) || 1, base = h - 22;
+    const cols = Math.floor(w / 3);
+    g.fillStyle = "rgba(244,182,60,.13)";
+    AN.moments.forEach((m) => { const x0 = m.start / AN.duration * w, x1 = m.end / AN.duration * w; g.fillRect(x0, 0, x1 - x0, base); });
+    for (let i = 0; i < cols; i++) {
+      const a = Math.floor(i / cols * n), b = Math.max(a + 1, Math.floor((i + 1) / cols * n));
+      let m = 0; for (let j = a; j < b; j++) m = Math.max(m, e[j]);
+      const t = (a / n) * AN.duration;
+      const inM = AN.moments.some((mm) => t >= mm.start && t < mm.end);
+      const bh = Math.max(1, Math.min(1, m / top) * (base - 6));
+      g.fillStyle = inM ? "#f4b63c" : "#46505f";
+      g.fillRect(i * 3, base - bh, 2, bh);
+    }
+    g.fillStyle = "#8a94a6"; g.font = "11px 'JetBrains Mono', monospace"; g.textBaseline = "bottom";
+    for (let k = 0; k <= 4; k++) {
+      const x = k / 4 * w; g.textAlign = k === 0 ? "left" : k === 4 ? "right" : "center";
+      g.fillText(tfmt(k / 4 * AN.duration), x, h);
+    }
+    AN.moments.forEach((m, i) => {
+      const x = (m.start + m.end) / 2 / AN.duration * w;
+      g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = "#e8ecf2"; g.font = "600 11px 'JetBrains Mono', monospace";
+      g.fillText(String(i + 1), clamp(x, 8, w - 8), 4);
+    });
+  }
+  function renderMoments() {
+    AN.moments = findMoments(AN.energy, AN.hz, AN.len, 3);
+    const real = !!AN.file;
+    $("#moments").innerHTML = AN.moments.map((m, i) => `
+      <div class="moment">
+        <span class="rank">Moment ${i + 1}</span>
+        <b>${tfmt(m.start)} → ${tfmt(m.end)}</b>
+        <div class="score" title="Intensité ${Math.round(m.score * 100)} %"><i style="width:${Math.round(m.score * 100)}%"></i></div>
+        <span class="hint">Intensité ${Math.round(m.score * 100)} % · ${Math.round(m.end - m.start)} s</span>
+        ${real ? `<button class="btn" type="button" data-m="${i}">Monter dans Rush.Studio</button>` : ""}
+      </div>`).join("") || `<p class="hint">Vidéo trop courte pour proposer des moments.</p>`;
+    drawEnergy();
+  }
+  $("#moments").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-m]"); if (!b || !AN.file || !window.RushStudio) return;
+    const m = AN.moments[+b.dataset.m];
+    go("creation");
+    await window.RushStudio.loadFile(AN.file);
+    window.RushStudio.setRange(m.start, m.end);
+    toast(`Moment ${+b.dataset.m + 1} chargé dans Rush.Studio : ${tfmt(m.start)} → ${tfmt(m.end)}.`);
+  });
+  $("#anLen").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    AN.len = +b.dataset.v; segValue($("#anLen"), AN.len); renderMoments();
+  });
+  async function analyseFile(file) {
+    if (!file) return;
+    if (!/^(video|audio)\//.test(file.type)) { toast("Choisissez un fichier vidéo ou audio."); return; }
+    if (file.size > 1.5e9) { toast("Fichier trop lourd pour être analysé dans le navigateur (1,5 Go max)."); return; }
+    $("#anInfo").textContent = `Analyse du son de « ${file.name} » en cours…`;
+    try {
+      const buf = await file.arrayBuffer();
+      const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const ctx = new Ctx(1, 8000, 8000);
+      const audio = await ctx.decodeAudioData(buf);
+      const hop = Math.round(audio.sampleRate / AN.hz), n = Math.floor(audio.length / hop);
+      const ch = [];
+      for (let k = 0; k < audio.numberOfChannels; k++) ch.push(audio.getChannelData(k));
+      const e = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let s = 0;
+        for (let j = i * hop; j < (i + 1) * hop; j++) { let v = 0; for (const d of ch) v += d[j]; v /= ch.length; s += v * v; }
+        e[i] = Math.sqrt(s / hop);
+      }
+      AN.energy = e; AN.duration = audio.duration; AN.file = file; AN.name = file.name;
+      $("#anTag").textContent = "Votre vidéo"; $("#anTag").classList.remove("sample");
+      $("#anInfo").textContent = `${file.name} · ${tfmt(audio.duration)}. Choisissez un moment pour l'ouvrir dans Rush.Studio.`;
+      renderMoments();
+    } catch (err) {
+      console.warn(err);
+      $("#anInfo").textContent = "Impossible de lire le son de ce fichier. Il n'a peut-être pas de piste audio, ou son format n'est pas pris en charge par le navigateur (essayez un MP4).";
+    }
+  }
+  $("#anFile").addEventListener("change", (e) => { analyseFile(e.target.files[0]); e.target.value = ""; });
+  AN.energy = sampleEnergy(); AN.duration = 720;
+
+  /* ================= analyse : tableau de bord ================= */
+  const PLAT = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" };
+  const DASH = { plat: "all", days: 30 };
+  const series = (() => {
+    const out = {};
+    const conf = { tiktok: [5200, 1.6, 11], instagram: [2600, 1.2, 23], youtube: [3400, 1.35, 31] };
+    for (const [k, [base, growth, seed]] of Object.entries(conf)) {
+      const r = rng(seed), arr = [];
+      for (let i = 0; i < 60; i++) {
+        const trend = base * (1 + (growth - 1) * i / 59);
+        const week = 1 + .18 * Math.sin((i + seed) / 7 * Math.PI * 2);
+        let v = trend * week * (.75 + r() * .5);
+        if (r() < .06) v *= 2.5 + r() * 3; // un clip qui décolle
+        arr.push(Math.round(v));
+      }
+      out[k] = arr;
+    }
+    return out;
+  })();
+  const RET = { tiktok: [.41, .38], instagram: [.36, .35], youtube: [.48, .44] };
+  const ENG = { tiktok: [.072, .065], instagram: [.058, .061], youtube: [.041, .037] };
+  function daily() {
+    const keys = DASH.plat === "all" ? Object.keys(PLAT) : [DASH.plat];
+    const all = Array.from({ length: 60 }, (_, i) => keys.reduce((s, k) => s + series[k][i], 0));
+    return { cur: all.slice(60 - DASH.days), prev: all.slice(60 - 2 * DASH.days, 60 - DASH.days), keys };
+  }
+  function wavg(map, keys, idx) {
+    let tot = 0, s = 0;
+    keys.forEach((k) => { const v = series[k].slice(60 - DASH.days).reduce((a, b) => a + b, 0); tot += v; s += v * map[k][idx]; });
+    return tot ? s / tot : 0;
+  }
+  function renderDash() {
+    const { cur, prev, keys } = daily();
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    const v = sum(cur), vp = sum(prev);
+    const ret = wavg(RET, keys, 0), retP = wavg(RET, keys, 1), eng = wavg(ENG, keys, 0), engP = wavg(ENG, keys, 1);
+    const subs = Math.round(v * .0042), subsP = Math.round(vp * .0042);
+    const delta = (a, b, pts) => {
+      const d = pts ? (a - b) * 100 : (a - b) / Math.max(1, b) * 100;
+      const cls = d >= 0 ? "up" : "down";
+      return `<span class="delta ${cls}">${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1).replace(".", ",")}${pts ? " pt" : " %"}</span>`;
+    };
+    const lbl = DASH.days === 7 ? "vs 7 j précédents" : "vs 30 j précédents";
+    $("#kpis").innerHTML = `
+      <div class="kpi"><small>Vues</small><b>${nfc.format(v)}</b>${delta(v, vp)} <small>${lbl}</small></div>
+      <div class="kpi"><small>Rétention moyenne</small><b>${(ret * 100).toFixed(0)} %</b>${delta(ret, retP, true)}</div>
+      <div class="kpi"><small>Taux d'engagement</small><b>${(eng * 100).toFixed(1).replace(".", ",")} %</b>${delta(eng, engP, true)}</div>
+      <div class="kpi"><small>Abonnés gagnés</small><b>+${nf.format(subs)}</b>${delta(subs, subsP)}</div>`;
+    $("#lineSub").textContent = DASH.plat === "all" ? "Toutes plateformes" : PLAT[DASH.plat];
+    drawLine();
+    const totals = Object.keys(PLAT).map((k) => [k, sum(series[k].slice(60 - DASH.days))]);
+    const mx = Math.max(...totals.map((t) => t[1]));
+    $("#bars").innerHTML = totals.map(([k, t]) => `
+      <div class="barrow ${DASH.plat !== "all" && DASH.plat !== k ? "dim" : ""}" title="${PLAT[k]} : ${nf.format(t)} vues">
+        <span>${PLAT[k]}</span><div class="track"><div class="fill" style="width:${(t / mx * 100).toFixed(1)}%"></div></div><span>${nfc.format(t)}</span></div>`).join("");
+    renderHeat(); renderTop();
+  }
+  const lineState = { pts: [], dates: [] };
+  function drawLine() {
+    const svg = $("#lineChart"), w = svg.clientWidth, h = svg.clientHeight;
+    if (!w) return;
+    const { cur } = daily();
+    const pad = { l: 44, r: 10, t: 10, b: 24 };
+    const max = Math.max(...cur) * 1.1;
+    const step = Math.pow(10, Math.floor(Math.log10(max / 3)));
+    const tick = [1, 2, 2.5, 5, 10].map((m) => m * step).find((s) => max / s <= 5) || step * 10;
+    const X = (i) => pad.l + i / Math.max(1, cur.length - 1) * (w - pad.l - pad.r);
+    const Y = (v) => h - pad.b - v / (Math.ceil(max / tick) * tick) * (h - pad.t - pad.b);
+    const today = new Date();
+    lineState.dates = cur.map((_, i) => { const d = new Date(today); d.setDate(d.getDate() - (cur.length - 1 - i)); return d; });
+    lineState.pts = cur.map((v, i) => [X(i), Y(v), v]);
+    let grid = "";
+    for (let v = 0; v <= Math.ceil(max / tick) * tick + 1e-6; v += tick) {
+      grid += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#29313d" stroke-width="1"/>
+        <text x="${pad.l - 8}" y="${Y(v) + 4}" text-anchor="end" fill="#8a94a6" font-size="11" font-family="JetBrains Mono, monospace">${nfc.format(v)}</text>`;
+    }
+    const fmtD = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    const ticksX = DASH.days === 7 ? [0, 2, 4, 6] : [0, 7, 14, 21, 29];
+    const xl = ticksX.map((i) => `<text x="${X(i)}" y="${h - 6}" text-anchor="${i === 0 ? "start" : i === cur.length - 1 ? "end" : "middle"}" fill="#8a94a6" font-size="11" font-family="JetBrains Mono, monospace">${fmtD(lineState.dates[i])}</text>`).join("");
+    const path = lineState.pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const area = path + ` L${X(cur.length - 1)} ${Y(0)} L${X(0)} ${Y(0)} Z`;
+    const lastP = lineState.pts[lineState.pts.length - 1];
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.innerHTML = `${grid}${xl}
+      <path d="${area}" fill="rgba(244,182,60,.12)"/>
+      <path d="${path}" fill="none" stroke="#f4b63c" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="${lastP[0]}" cy="${lastP[1]}" r="4.5" fill="#f4b63c" stroke="#050608" stroke-width="2"/>
+      <line id="cross" x1="0" x2="0" y1="${pad.t}" y2="${h - pad.b}" stroke="#e8ecf2" stroke-width="1" opacity="0"/>
+      <circle id="crossDot" r="5" fill="#f4b63c" stroke="#050608" stroke-width="2" opacity="0"/>
+      <rect x="${pad.l}" y="0" width="${w - pad.l - pad.r}" height="${h}" fill="transparent" id="hit"/>`;
+  }
+  $("#lineChart").addEventListener("pointermove", (e) => {
+    if (!lineState.pts.length) return;
+    const r = e.currentTarget.getBoundingClientRect(), x = e.clientX - r.left;
+    let best = 0, bd = Infinity;
+    lineState.pts.forEach((p, i) => { const d = Math.abs(p[0] - x); if (d < bd) { bd = d; best = i; } });
+    const [px, py, v] = lineState.pts[best];
+    const cr = $("#cross"), cd = $("#crossDot");
+    if (!cr) return;
+    cr.setAttribute("x1", px); cr.setAttribute("x2", px); cr.setAttribute("opacity", ".5");
+    cd.setAttribute("cx", px); cd.setAttribute("cy", py); cd.setAttribute("opacity", "1");
+    const tip = $("#lineTip"); tip.hidden = false;
+    tip.textContent = `${lineState.dates[best].toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · ${nf.format(v)} vues`;
+    tip.style.left = clamp(px, 70, r.width - 70) + "px"; tip.style.top = py + "px";
+  });
+  $("#lineChart").addEventListener("pointerleave", () => {
+    $("#lineTip").hidden = true;
+    const cr = $("#cross"), cd = $("#crossDot"); if (cr) { cr.setAttribute("opacity", "0"); cd.setAttribute("opacity", "0"); }
+  });
+  function renderHeat() {
+    const days = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+    const slots = ["6h–9h", "9h–12h", "12h–15h", "15h–18h", "18h–21h", "21h–0h"];
+    const r = rng(DASH.plat.length * 13 + 5);
+    const shape = [.25, .35, .55, .5, 1, .8];
+    const grid = slots.map((_, s) => days.map((_, d) => shape[s] * (d >= 4 ? 1.15 : 1) * (.7 + r() * .45)));
+    let best = [0, 0], bv = 0;
+    grid.forEach((row, s) => row.forEach((v, d) => { if (v > bv) { bv = v; best = [s, d]; } }));
+    const mx = bv;
+    let html = `<span></span>` + days.map((d) => `<span class="h">${d}</span>`).join("");
+    grid.forEach((row, s) => {
+      html += `<span class="r">${slots[s]}</span>`;
+      row.forEach((v, d) => {
+        const p = Math.round(8 + v / mx * 92);
+        const isBest = s === best[0] && d === best[1];
+        html += `<span class="c${isBest ? " best" : ""}" style="background:color-mix(in oklab, var(--accent) ${p}%, var(--surface-2))" title="${days[d]} ${slots[s]} : indice ${Math.round(v / mx * 100)}"></span>`;
+      });
+    });
+    $("#heat").innerHTML = html;
+    const full = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+    $("#bestSlot").textContent = `Meilleur créneau : ${full[best[1]]}, ${slots[best[0]]}`;
+  }
+  const CLIPS = [
+    ["« J'ai tout plaqué à 25 ans » : l'extrait qui divise", "tiktok", 1840000, .52, .091],
+    ["Le fou rire en direct, épisode 42", "tiktok", 920000, .47, .083],
+    ["3 erreurs de débutant au montage", "youtube", 610000, .58, .044],
+    ["Avant / après : la cuisine rénovée en 30 s", "instagram", 455000, .39, .067],
+    ["La question qui a tout changé", "youtube", 318000, .51, .039],
+    ["Réaction : ils découvrent le prix final", "instagram", 262000, .35, .058],
+    ["Pourquoi personne ne parle de ça ?", "tiktok", 198000, .33, .049],
+  ];
+  function renderTop() {
+    const rows = CLIPS.filter((c) => DASH.plat === "all" || c[1] === DASH.plat)
+      .map((c) => [c[0], c[1], Math.round(c[2] * (DASH.days === 7 ? .31 : 1)), c[3], c[4]]);
+    $("#topClips").innerHTML = rows.map((c) => `<tr><td>${esc(c[0])}</td><td>${PLAT[c[1]]}</td><td class="num">${nf.format(c[2])}</td><td class="num">${Math.round(c[3] * 100)} %</td><td class="num">${(c[4] * 100).toFixed(1).replace(".", ",")} %</td></tr>`).join("");
+  }
+  $("#platF").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; DASH.plat = b.dataset.v; chipValue($("#platF"), DASH.plat); renderDash(); });
+  $("#periodF").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; DASH.days = +b.dataset.v; segValue($("#periodF"), DASH.days); renderDash(); });
+  $("#connectBtn").addEventListener("click", () => requireAccount("Créez un compte pour connecter vos plateformes.", () => toast("La connexion à TikTok, Instagram et YouTube arrive bientôt.")));
+
+  /* ================= création : modèles ================= */
+  const TEMPLATES = {
+    podcast: { fit: "contain", bg: "blur", capStyle: "karaoke", titleStyle: "band", titlePos: "top", font: "anton", capY: .72, capSize: 1, progress: true, zoom: 1, panX: 0, panY: 0 },
+    gaming: { fit: "cover", capStyle: "box", titleStyle: "outline", titlePos: "top", font: "bricolage", capY: .8, capSize: 1.1, progress: false },
+    tuto: { fit: "cover", capStyle: "clean", titleStyle: "plain", titlePos: "top", font: "bricolage", capY: .74, capSize: .95, progress: true },
+    citation: { fit: "contain", bg: "color", bgColor: "#101318", titleStyle: "plain", titlePos: "center", font: "marker", capStyle: "clean", capY: .7, progress: false, zoom: 1, panX: 0, panY: 0 },
+  };
+  $("#templates").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-t]"); if (!b || !window.RushStudio) return;
+    window.RushStudio.applyTemplate(TEMPLATES[b.dataset.t]);
+    $$("#templates .chip").forEach((c) => c.setAttribute("aria-pressed", String(c === b)));
+    toast(`Modèle « ${b.textContent} » appliqué.`);
+  });
+
+  /* ================= promotion ================= */
+  const SAMPLE_CAMPS = [
+    { id: "c1", brand: "Kinetik", sector: "Boisson énergisante", color: "#5cc6ff", title: "Clips « premier réveil » pour Kinetik Zéro", cpm: 1.5, budget: 12000, spent: 7400, plats: ["tiktok", "reels"], days: 12, clippers: 214, brief: "Montrez une routine du matin qui démarre fort. Le produit apparaît dans les 5 premières secondes. Pas de comparaison avec d'autres marques." },
+    { id: "c2", brand: "Maison Oréa", sector: "Cosmétique", color: "#f7a8c4", title: "Tutos express avec la gamme Oréa Nuit", cpm: 2.2, budget: 8000, spent: 1900, plats: ["reels", "shorts"], days: 21, clippers: 86, brief: "Découpez les tutoriels longs fournis en clips de 20 à 40 s. Sous-titres obligatoires, mention #partenariat." },
+    { id: "c3", brand: "Polaris Audio", sector: "Casques et enceintes", color: "#9b8cff", title: "Test son en conditions réelles : métro, salle de sport, open space", cpm: 1.8, budget: 20000, spent: 16500, plats: ["tiktok", "shorts"], days: 5, clippers: 402, brief: "Rushs fournis : 3 h de tests. Gardez les réactions spontanées, citez le modèle P2 à l'écran." },
+    { id: "c4", brand: "Hors Champ", sector: "Podcast", color: "#62d39a", title: "Les meilleurs moments de la saison 3", cpm: 1, budget: 3000, spent: 600, plats: ["tiktok", "reels", "shorts"], days: 30, clippers: 57, brief: "Choisissez les passages drôles ou polémiques. Lien vers l'épisode complet en commentaire épinglé." },
+    { id: "c5", brand: "Vélo Brume", sector: "Vélos électriques", color: "#ffd23f", title: "Trajets domicile-travail filmés en POV", cpm: 2.5, budget: 6000, spent: 3100, plats: ["reels", "shorts"], days: 9, clippers: 73, brief: "Montrez un trajet réel de moins de 20 min. Le casque est obligatoire à l'image." },
+    { id: "c6", brand: "Studio Nacre", sector: "Jeu mobile", color: "#ff9f6b", title: "Moments épiques sur Nacre Quest", cpm: 3, budget: 15000, spent: 4200, plats: ["tiktok"], days: 18, clippers: 129, brief: "Captures de jeu fournies. Terminez chaque clip par l'écran du logo pendant 1 s." },
+  ];
+  const CP = { tiktok: "TikTok", reels: "Reels", shorts: "Shorts" };
+  const PROMO = { plat: "all", sort: "cpm" };
+  function allCamps() { return store.get("myCamps", []).concat(SAMPLE_CAMPS); }
+  function renderCamps() {
+    const joined = new Set(store.get("joined", []));
+    let list = allCamps().filter((c) => PROMO.plat === "all" || c.plats.includes(PROMO.plat));
+    const left = (c) => c.budget - c.spent;
+    list.sort(PROMO.sort === "cpm" ? (a, b) => b.cpm - a.cpm : PROMO.sort === "left" ? (a, b) => left(b) - left(a) : (a, b) => a.days - b.days);
+    list.sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+    $("#camps").innerHTML = list.map((c) => {
+      const used = clamp(c.spent / c.budget, 0, 1), isJ = joined.has(c.id);
+      return `<article class="card camp">
+        <div class="camp-head"><span class="mono" style="background:${esc(c.color)}">${esc(c.brand.slice(0, 1).toUpperCase())}</span>
+          <div><b>${esc(c.brand)}</b><small>${esc(c.sector)}</small></div>${c.mine ? `<span class="tag" style="margin-left:auto;color:var(--accent)">Votre campagne</span>` : ""}</div>
+        <h3>${esc(c.title)}</h3>
+        <div class="cpm"><b>${eur(c.cpm)}</b><span>pour 1 000 vues</span></div>
+        <div class="budget"><small><span>${nf.format(Math.round(c.spent))} € utilisés</span><span>sur ${nf.format(c.budget)} €</span></small><div class="meter"><i style="width:${(used * 100).toFixed(1)}%"></i></div></div>
+        <div class="meta">${c.plats.map((p) => `<span class="tag">${CP[p]}</span>`).join("")}<span class="when">Fin dans ${c.days} j · ${nf.format(c.clippers)} clippeurs</span></div>
+        <details><summary>Voir le brief</summary><p>${esc(c.brief || "Pas de brief.")}</p></details>
+        <div class="actions">
+          ${c.mine ? `<button class="btn" type="button" data-del="${c.id}">Retirer</button>` : `<button class="btn ${isJ ? "joined" : "primary"}" type="button" data-join="${c.id}">${isJ ? "Inscrit ✓" : "Rejoindre"}</button>`}
+          <button class="btn ghost" type="button" data-sim="${c.cpm}">Simuler</button>
+        </div>
+      </article>`;
+    }).join("") || `<p class="hint">Aucune campagne sur cette plateforme pour le moment.</p>`;
+  }
+  $("#camps").addEventListener("click", (e) => {
+    const j = e.target.closest("[data-join]");
+    if (j) {
+      const id = j.dataset.join;
+      requireAccount("Créez un compte pour rejoindre une campagne.", () => {
+        const set = new Set(store.get("joined", []));
+        if (set.has(id)) { set.delete(id); toast("Vous avez quitté la campagne."); }
+        else { set.add(id); toast("Inscription confirmée. Le brief et les rushs sont dans la fiche de la campagne."); }
+        store.set("joined", [...set]); renderCamps();
+      });
+      return;
+    }
+    const d = e.target.closest("[data-del]");
+    if (d) { store.set("myCamps", store.get("myCamps", []).filter((c) => c.id !== d.dataset.del)); renderCamps(); toast("Campagne retirée."); return; }
+    const s = e.target.closest("[data-sim]");
+    if (s) { $("#simCpm").value = s.dataset.sim; sim(); $("#simCpm").scrollIntoView({ block: "center", behavior: "smooth" }); }
+  });
+  $("#campF").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; PROMO.plat = b.dataset.v; chipValue($("#campF"), PROMO.plat); renderCamps(); });
+  $("#campSort").addEventListener("change", (e) => { PROMO.sort = e.target.value; renderCamps(); });
+  function sim() {
+    const views = Math.round(Math.pow(10, +$("#simViews").value) / 1000) * 1000;
+    const cpm = Math.max(0, parseFloat($("#simCpm").value) || 0);
+    $("#simViewsOut").textContent = nf.format(views);
+    $("#simOut").textContent = eur(views / 1000 * cpm);
+  }
+  $("#simViews").addEventListener("input", sim);
+  $("#simCpm").addEventListener("input", sim);
+  function setSide(v) {
+    segValue($("#side"), v);
+    $("#clipperPane").hidden = v !== "clipper"; $("#brandPane").hidden = v !== "brand";
+  }
+  $("#side").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setSide(b.dataset.v); });
+  function estimate() {
+    const budget = Math.max(0, +$("#cfBudget").value || 0), cpm = Math.max(.1, +$("#cfCpm").value || .1), days = Math.max(1, +$("#cfDays").value || 1);
+    const views = budget / cpm * 1000;
+    $("#esViews").textContent = nfc.format(views);
+    $("#esClips").textContent = nf.format(Math.round(views / 20000)) + " clips";
+    $("#esDay").textContent = eur(budget / days);
+  }
+  ["#cfBudget", "#cfCpm", "#cfDays"].forEach((s) => $(s).addEventListener("input", estimate));
+  $("#campForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const brand = $("#cfBrand").value.trim(), title = $("#cfTitle").value.trim();
+    const budget = +$("#cfBudget").value, cpm = +$("#cfCpm").value, days = +$("#cfDays").value;
+    const plats = $$('input[name="cfPlat"]:checked').map((i) => i.value);
+    const err = (m) => { $("#cfErr").textContent = m; $("#cfErr").hidden = false; };
+    if (!brand || !title) return err("Indiquez le nom de la marque et le titre de la campagne.");
+    if (!(budget >= 100)) return err("Le budget minimum est de 100 €.");
+    if (!(cpm >= .1)) return err("La rémunération doit être d'au moins 0,10 € pour 1 000 vues.");
+    if (!(days >= 3 && days <= 90)) return err("La durée doit être comprise entre 3 et 90 jours.");
+    if (!plats.length) return err("Choisissez au moins une plateforme.");
+    $("#cfErr").hidden = true;
+    requireAccount("Créez un compte marque pour publier votre campagne.", () => {
+      const c = { id: "m" + Date.now(), brand, sector: "Votre marque", color: "#f4b63c", title, cpm, budget, spent: 0, plats, days, clippers: 0, brief: $("#cfBrief").value.trim(), mine: true };
+      store.set("myCamps", [c].concat(store.get("myCamps", [])));
+      $("#campForm").reset(); estimate();
+      setSide("clipper"); PROMO.plat = "all"; chipValue($("#campF"), "all"); renderCamps();
+      toast("Campagne publiée. Elle apparaît en tête de liste.");
+    });
+  });
+
+  /* ================= dépôt de fichiers ================= */
+  let depth = 0;
+  window.addEventListener("dragenter", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { depth++; $("#drop").hidden = false; } });
+  window.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) $("#drop").hidden = true; });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => {
+    e.preventDefault(); depth = 0; $("#drop").hidden = true;
+    const f = e.dataTransfer && e.dataTransfer.files[0]; if (!f) return;
+    if (current === "analyse") { analyseFile(f); return; }
+    if (/\.(srt|vtt)$/i.test(f.name) && window.RushStudio) { window.RushStudio.importSubs(f); return; }
+    if (window.RushStudio) { go("creation"); window.RushStudio.loadFile(f); }
+  });
+
+  let rt = 0;
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { drawEnergy(); drawLine(); }, 150); });
+
+  renderAccount(); renderMoments(); renderDash(); renderCamps(); sim(); estimate();
+  route();
+})();
+</script>
+</body>
+</html>
